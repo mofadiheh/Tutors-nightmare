@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Language Tutor - Start Learning</title>
+    <link rel="stylesheet" href="/static/landing.css">
+</head>
+<body>
+    <div class="landing-container">
+        <!-- Header -->
+        <header class="landing-header">
+            <div class="logo">
+                <span class="logo-icon">🌍</span>
+                <h1>Language Tutor</h1>
+            </div>
+            <p class="tagline">Your AI-powered language learning companion</p>
+        </header>
+
+        <!-- Language Selection Section -->
+        <section class="language-section">
+            <h2>Choose Your Languages</h2>
+            <div class="language-selectors">
+                <div class="language-selector">
+                    <label for="primaryLanguage">
+                        <span class="selector-icon">📚</span>
+                        I'm learning
+                    </label>
+                    <select id="primaryLanguage" class="language-dropdown">
+                        <option value="">Select language...</option>
+                        <option value="en">English</option>
+                        <option value="es">Spanish (Español)</option>
+                        <option value="fr">French (Français)</option>
+                        <option value="de">German (Deutsch)</option>
+                        <option value="it">Italian (Italiano)</option>
+                        <option value="pt">Portuguese (Português)</option>
+                        <option value="zh">Chinese (中文)</option>
+                        <option value="ja">Japanese (日本語)</option>
+                        <option value="ko">Korean (한국어)</option>
+                        <option value="ar">Arabic (العربية)</option>
+                        <option value="ru">Russian (Русский)</option>
+                        <option value="hi">Hindi (हिन्दी)</option>
+                    </select>
+                </div>
+
+                <div class="language-selector">
+                    <label for="secondaryLanguage">
+                        <span class="selector-icon">💬</span>
+                        I speak
+                    </label>
+                    <select id="secondaryLanguage" class="language-dropdown">
+                        <option value="">Select language...</option>
+                        <option value="en" selected>English</option>
+                        <option value="es">Spanish (Español)</option>
+                        <option value="fr">French (Français)</option>
+                        <option value="de">German (Deutsch)</option>
+                        <option value="it">Italian (Italiano)</option>
+                        <option value="pt">Portuguese (Português)</option>
+                        <option value="zh">Chinese (中文)</option>
+                        <option value="ja">Japanese (日本語)</option>
+                        <option value="ko">Korean (한국어)</option>
+                        <option value="ar">Arabic (العربية)</option>
+                        <option value="ru">Russian (Русский)</option>
+                        <option value="hi">Hindi (हिन्दी)</option>
+                    </select>
+                </div>
+            </div>
+        </section>
+
+        <!-- Topic Starters Section -->
+        <section class="topics-section">
+            <h2>Choose a Topic to Start</h2>
+            <div id="topicsContainer" class="topics-container">
+                <div class="loading-topics">
+                    <div class="spinner"></div>
+                    <p>Loading topics...</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Free Discussion Button -->
+        <section class="action-section">
+            <button id="freeDiscussionBtn" class="primary-button">
+                <span class="button-icon">💬</span>
+                Start Free Discussion
+            </button>
+            <p class="action-hint">Or choose a topic above to get started</p>
+        </section>
+
+        <!-- Footer -->
+        <footer class="landing-footer">
+            <p>Practice naturally, learn effectively</p>
+        </footer>
+    </div>
+
+    <script src="/static/landing.js"></script>
+</body>
+</html>
