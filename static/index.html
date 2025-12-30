@@ -7,10 +7,38 @@
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-    <div class="container">
-        <h1>Language-Learning Chatbot</h1>
-        <div id="status" class="status">
-            <p>Loading...</p>
+    <div class="chat-container">
+        <div class="chat-header">
+            <h1>Language Tutor</h1>
+            <div class="status-indicator" id="statusIndicator">
+                <span class="status-dot"></span>
+                <span class="status-text">Ready</span>
+            </div>
+        </div>
+        
+        <div class="messages-container" id="messagesContainer">
+            <div class="welcome-message">
+                <p>👋 Welcome! I'm your language tutor. Start chatting to practice your language skills.</p>
+            </div>
+        </div>
+        
+        <div class="input-container">
+            <form id="chatForm" class="chat-form">
+                <input 
+                    type="text" 
+                    id="messageInput" 
+                    class="message-input" 
+                    placeholder="Type your message..." 
+                    autocomplete="off"
+                    required
+                />
+                <button type="submit" class="send-button" id="sendButton">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="22" y1="2" x2="11" y2="13"></line>
+                        <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                    </svg>
+                </button>
+            </form>
         </div>
     </div>
     <script src="/static/app.js"></script>
