@@ -6,10 +6,28 @@ FastAPI backend with static file serving
 from fastapi import FastAPI, Query
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
+from pydantic import BaseModel
 from typing import Optional
 import uvicorn
+import uuid
+import asyncio
 
 app = FastAPI(title="Language-Learning Chatbot")
+
+# Request/Response models
+class ChatRequest(BaseModel):
+    """Chat message request"""
+    conversation_id: Optional[str] = None
+    user_text: str
+    user_lang: str = "es"
+    display_lang: str = "es"
+    mode: str = "chat"  # "chat" or "tutor"
+
+class ChatResponse(BaseModel):
+    """Chat message response"""
+    conversation_id: str
+    assistant_text: str
+    assistant_lang: str
 
 # Health check endpoint
 @app.get("/health")
@@ -59,6 +77,47 @@ async def get_topics(lang: Optional[str] = Query(default="en")):
     ]
     
     return topics
+
+# Chat endpoint (stubbed for now - Milestone C2)
+@app.post("/api/chat", response_model=ChatResponse)
+async def chat(request: ChatRequest):
+    """
+    Send a chat message and receive assistant response
+    Currently returns stubbed responses - will be replaced with real AI in Phase 2
+    """
+    # Add 1-2 second delay to simulate LLM processing
+    await asyncio.sleep(1.5)
+    
+    # Generate or use existing conversation ID
+    conversation_id = request.conversation_id or str(uuid.uuid4())
+    
+    # Stubbed responses based on mode
+    if request.mode == "tutor":
+        # Tutor mode: provide teaching-focused responses
+        stubbed_responses = [
+            "That's a great question! Let me explain that in {lang}. [This is a stubbed tutor response]",
+            "Good effort! Here's a tip: [Stubbed grammar tip in {lang}]",
+            "Excellent! Let's practice that concept more. [Stubbed tutor feedback in {lang}]",
+            "I notice you're working on this pattern. [Stubbed insight in {lang}]",
+        ]
+    else:
+        # Chat mode: provide conversational responses
+        stubbed_responses = [
+            "That's interesting! Tell me more about that. [Stubbed response in {lang}]",
+            "I understand. What do you think about...? [Stubbed response in {lang}]",
+            "That sounds wonderful! [Stubbed response in {lang}]",
+            "I see. How does that make you feel? [Stubbed response in {lang}]",
+        ]
+    
+    # Select response based on message length (pseudo-random)
+    response_index = len(request.user_text) % len(stubbed_responses)
+    assistant_text = stubbed_responses[response_index].format(lang=request.user_lang.upper())
+    
+    return ChatResponse(
+        conversation_id=conversation_id,
+        assistant_text=assistant_text,
+        assistant_lang=request.user_lang
+    )
 
 # Serve static files
 app.mount("/static", StaticFiles(directory="static"), name="static")
