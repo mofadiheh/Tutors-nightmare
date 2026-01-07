@@ -7,7 +7,7 @@ from fastapi import FastAPI, Query
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List, Union
 import uvicorn
 import uuid
 import asyncio
@@ -28,6 +28,32 @@ class ChatResponse(BaseModel):
     conversation_id: str
     assistant_text: str
     assistant_lang: str
+
+class TranslateRequest(BaseModel):
+    """Translation request"""
+    text: Union[str, List[str]]
+    source_lang: str
+    target_lang: str
+
+class TranslateResponse(BaseModel):
+    """Translation response"""
+    translated_text: Union[str, List[str]]
+
+class Message(BaseModel):
+    """Message object"""
+    id: str
+    role: str  # "user" or "assistant"
+    text: str
+    original_lang: str
+    timestamp: str
+
+class ConversationResponse(BaseModel):
+    """Conversation history response"""
+    conversation_id: str
+    primary_lang: str
+    secondary_lang: str
+    mode: str
+    messages: List[Message]
 
 # Health check endpoint
 @app.get("/health")
@@ -117,6 +143,46 @@ async def chat(request: ChatRequest):
         conversation_id=conversation_id,
         assistant_text=assistant_text,
         assistant_lang=request.user_lang
+    )
+
+# Translation endpoint (stubbed for now - Milestone D2)
+@app.post("/api/translate", response_model=TranslateResponse)
+async def translate(request: TranslateRequest):
+    """
+    Translate text from source to target language
+    Currently returns stubbed translations - will be replaced with real translation in Phase 2
+    """
+    # Add small delay to simulate API call (200-500ms)
+    await asyncio.sleep(0.3)
+    
+    # Stub logic: prefix text with translation marker
+    if isinstance(request.text, str):
+        translated = f"[Translated to {request.target_lang.upper()}] {request.text}"
+        return TranslateResponse(translated_text=translated)
+    else:
+        # Handle array of strings
+        translated = [f"[Translated to {request.target_lang.upper()}] {t}" for t in request.text]
+        return TranslateResponse(translated_text=translated)
+
+# Conversation history endpoint (stubbed for now - Milestone D3)
+@app.get("/api/conversations/{conversation_id}", response_model=ConversationResponse)
+async def get_conversation(
+    conversation_id: str,
+    display_lang: Optional[str] = Query(default="en")
+):
+    """
+    Get conversation history by ID
+    Currently returns stubbed data - will use localStorage on client side for Phase 1
+    In Phase 2, this will fetch from database
+    """
+    # For now, return empty conversation structure
+    # The frontend will manage messages via localStorage
+    return ConversationResponse(
+        conversation_id=conversation_id,
+        primary_lang="es",
+        secondary_lang="en",
+        mode="chat",
+        messages=[]
     )
 
 # Serve static files

@@ -36,6 +36,11 @@
                     <span id="targetLang">EN</span>
                 </button>
                 
+                <button id="insightsButton" class="header-button insights-button" title="View Insights">
+                    <span>📊</span>
+                    <span class="button-text">Insights</span>
+                </button>
+                
                 <button id="tutorModeButton" class="header-button tutor-button" title="Tutor Mode">
                     <span>💡</span>
                     <span class="button-text">Tutor</span>
@@ -46,6 +51,36 @@
         <div class="messages-container" id="messagesContainer">
             <div class="welcome-message">
                 <p>👋 Welcome! I'm your language tutor. Start chatting to practice your language skills.</p>
+            </div>
+        </div>
+        
+        <!-- Insights Modal -->
+        <div id="insightsModal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>📊 Learning Insights</h2>
+                    <button id="closeInsights" class="close-button">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="insights-section">
+                        <h3>🔑 Key Vocabulary</h3>
+                        <div id="vocabularyList" class="insight-content">
+                            <p class="placeholder-text">Continue chatting to discover new vocabulary!</p>
+                        </div>
+                    </div>
+                    <div class="insights-section">
+                        <h3>📝 Sentence Patterns</h3>
+                        <div id="patternsList" class="insight-content">
+                            <p class="placeholder-text">Keep practicing to identify common sentence structures!</p>
+                        </div>
+                    </div>
+                    <div class="insights-section">
+                        <h3>💪 Progress</h3>
+                        <div id="progressStats" class="insight-content">
+                            <p class="placeholder-text">Your learning stats will appear here as you chat more.</p>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
         

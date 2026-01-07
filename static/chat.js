@@ -47,6 +47,9 @@ const statusIndicator = document.getElementById('statusIndicator');
 const homeButton = document.getElementById('homeButton');
 const languageToggle = document.getElementById('languageToggle');
 const tutorModeButton = document.getElementById('tutorModeButton');
+const insightsButton = document.getElementById('insightsButton');
+const insightsModal = document.getElementById('insightsModal');
+const closeInsights = document.getElementById('closeInsights');
 const currentLangSpan = document.getElementById('currentLang');
 const targetLangSpan = document.getElementById('targetLang');
 
@@ -207,6 +210,7 @@ async function handleSubmit(e) {
     chatState.messages.push({
         role: 'user',
         text: userMessage,
+        originalLang: chatState.primaryLang,
         timestamp: new Date()
     });
     
@@ -232,6 +236,7 @@ async function handleSubmit(e) {
         chatState.messages.push({
             role: 'assistant',
             text: response.assistant_text,
+            originalLang: response.assistant_lang,
             timestamp: new Date()
         });
         
@@ -249,8 +254,94 @@ async function handleSubmit(e) {
     }
 }
 
+// Translate messages to display language
+async function translateMessages() {
+    if (chatState.messages.length === 0) return;
+    
+    // Show loading indicator
+    messagesContainer.style.opacity = '0.6';
+    messagesContainer.style.pointerEvents = 'none';
+    
+    try {
+        // Collect all message texts
+        const textsToTranslate = chatState.messages.map(msg => msg.text);
+        
+        // Call translation API
+        const response = await fetch('/api/translate', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                text: textsToTranslate,
+                source_lang: chatState.messages[0].originalLang || chatState.primaryLang,
+                target_lang: chatState.displayLang
+            })
+        });
+        
+        if (!response.ok) {
+            throw new Error('Translation failed');
+        }
+        
+        const data = await response.json();
+        const translatedTexts = data.translated_text;
+        
+        // Update messages with translated text
+        chatState.messages.forEach((msg, index) => {
+            msg.displayText = translatedTexts[index];
+        });
+        
+        // Re-render all messages
+        rerenderMessages();
+        
+    } catch (error) {
+        console.error('Translation error:', error);
+        // If translation fails, just show original messages
+        rerenderMessages();
+    } finally {
+        // Remove loading state
+        messagesContainer.style.opacity = '1';
+        messagesContainer.style.pointerEvents = 'auto';
+    }
+}
+
+// Re-render all messages in the UI
+function rerenderMessages() {
+    // Clear message container but keep welcome message logic
+    const hasMessages = chatState.messages.length > 0;
+    messagesContainer.innerHTML = '';
+    
+    if (!hasMessages) {
+        const welcomeDiv = document.createElement('div');
+        welcomeDiv.className = 'welcome-message';
+        if (chatState.mode === 'tutor') {
+            welcomeDiv.innerHTML = `
+                <p>💡 <strong>Tutor Mode</strong></p>
+                <p>I'm here to answer your questions about words, grammar, and phrases. What would you like to know?</p>
+            `;
+        } else {
+            welcomeDiv.innerHTML = `
+                <p>👋 Welcome! I'm your language tutor. Start chatting to practice your language skills.</p>
+            `;
+        }
+        messagesContainer.appendChild(welcomeDiv);
+        return;
+    }
+    
+    // Render each message
+    chatState.messages.forEach(msg => {
+        const text = msg.displayText || msg.text;
+        const timestamp = msg.timestamp ? new Date(msg.timestamp) : new Date();
+        const messageBubble = createMessageBubble(text, msg.role, timestamp);
+        messagesContainer.appendChild(messageBubble);
+    });
+    
+    // Maintain scroll position (scroll to bottom)
+    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+}
+
 // Handle language toggle
-function handleLanguageToggle() {
+async function handleLanguageToggle() {
     // Toggle between primary and secondary language
     if (chatState.displayLang === chatState.primaryLang) {
         chatState.displayLang = chatState.secondaryLang;
@@ -268,8 +359,8 @@ function handleLanguageToggle() {
         display: chatState.displayLang
     });
     
-    // TODO: In Milestone D, this will re-fetch and translate all messages
-    console.log(`Display language toggled to: ${chatState.displayLang}`);
+    // Translate and re-render all messages
+    await translateMessages();
 }
 
 // Handle tutor mode toggle
@@ -277,24 +368,28 @@ function handleTutorMode() {
     if (chatState.mode === 'tutor') {
         // Exit tutor mode - go back to chat mode
         chatState.mode = 'chat';
-        // Could reload conversation or just update mode
+        chatState.conversationId = null; // Start fresh chat
+        chatState.messages = [];
+        
+        // Reset UI to regular chat welcome
+        messagesContainer.innerHTML = `
+            <div class="welcome-message">
+                <p>👋 Welcome! I'm your language tutor. Start chatting to practice your language skills.</p>
+            </div>
+        `;
     } else {
-        // Enter tutor mode - start fresh conversation
-        if (confirm('Start a new conversation in Tutor Mode? You can ask questions about vocabulary and grammar.')) {
-            chatState.mode = 'tutor';
-            chatState.conversationId = null; // Start fresh
-            chatState.messages = [];
-            
-            // Clear UI
-            messagesContainer.innerHTML = `
-                <div class="welcome-message">
-                    <p>💡 <strong>Tutor Mode</strong></p>
-                    <p>I'm here to answer your questions about words, grammar, and phrases. What would you like to know?</p>
-                </div>
-            `;
-        } else {
-            return; // User cancelled
-        }
+        // Enter tutor mode - start fresh conversation immediately
+        chatState.mode = 'tutor';
+        chatState.conversationId = null; // Start fresh
+        chatState.messages = [];
+        
+        // Clear UI and show tutor welcome
+        messagesContainer.innerHTML = `
+            <div class="welcome-message">
+                <p>💡 <strong>AI Tutor</strong></p>
+                <p>I am AI tutor, tell me your questions about the conversation.</p>
+            </div>
+        `;
     }
     
     updateModeDisplay();
@@ -306,6 +401,9 @@ function handleTutorMode() {
         secondary: chatState.secondaryLang,
         display: chatState.displayLang
     });
+    
+    // Save the state change
+    saveConversationToStorage();
 }
 
 // Handle home button
@@ -374,8 +472,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const welcomeMsg = messagesContainer.querySelector('.welcome-message');
         if (welcomeMsg) {
             welcomeMsg.innerHTML = `
-                <p>💡 <strong>Tutor Mode</strong></p>
-                <p>I'm here to answer your questions about words, grammar, and phrases. What would you like to know?</p>
+                <p>💡 <strong>AI Tutor</strong></p>
+                <p>I am AI tutor, tell me your questions about the conversation.</p>
             `;
         }
     }
@@ -388,14 +486,150 @@ document.addEventListener('DOMContentLoaded', () => {
     homeButton.addEventListener('click', handleHomeButton);
     languageToggle.addEventListener('click', handleLanguageToggle);
     tutorModeButton.addEventListener('click', handleTutorMode);
+    insightsButton.addEventListener('click', openInsightsModal);
+    closeInsights.addEventListener('click', closeInsightsModal);
+    
+    // Close modal when clicking outside
+    insightsModal.addEventListener('click', (e) => {
+        if (e.target === insightsModal) {
+            closeInsightsModal();
+        }
+    });
     
     // Focus input
     messageInput.focus();
     
-    // Auto-send topic message if present
-    if (params.topic) {
+    // Load conversation from localStorage if exists
+    loadConversationFromStorage();
+    
+    // Auto-send topic message if present (only if no messages loaded)
+    if (params.topic && chatState.messages.length === 0) {
         handleTopicMessage(params.topic);
     }
     
-    // TODO: In Milestone F, load conversation history from localStorage or API
+    // Save to localStorage whenever messages change
+    window.addEventListener('beforeunload', saveConversationToStorage);
 });
+
+// LocalStorage Functions (Milestone D3 & F2)
+function saveConversationToStorage() {
+    if (!chatState.conversationId) return;
+    
+    const conversationData = {
+        conversationId: chatState.conversationId,
+        primaryLang: chatState.primaryLang,
+        secondaryLang: chatState.secondaryLang,
+        displayLang: chatState.displayLang,
+        mode: chatState.mode,
+        topicId: chatState.topicId,
+        messages: chatState.messages,
+        lastUpdated: new Date().toISOString()
+    };
+    
+    try {
+        localStorage.setItem(`conversation_${chatState.conversationId}`, JSON.stringify(conversationData));
+        // Also save language preferences
+        localStorage.setItem('languagePreferences', JSON.stringify({
+            primary: chatState.primaryLang,
+            secondary: chatState.secondaryLang
+        }));
+    } catch (error) {
+        console.error('Failed to save to localStorage:', error);
+    }
+}
+
+function loadConversationFromStorage() {
+    const params = getUrlParams();
+    
+    // Try to load conversation if ID is in URL
+    if (params.conversationId) {
+        try {
+            const stored = localStorage.getItem(`conversation_${params.conversationId}`);
+            if (stored) {
+                const data = JSON.parse(stored);
+                chatState.messages = data.messages || [];
+                
+                // Re-render messages
+                if (chatState.messages.length > 0) {
+                    rerenderMessages();
+                }
+            }
+        } catch (error) {
+            console.error('Failed to load from localStorage:', error);
+        }
+    }
+    
+    // Load language preferences if available
+    try {
+        const prefs = localStorage.getItem('languagePreferences');
+        if (prefs && !params.primary) {
+            const { primary, secondary } = JSON.parse(prefs);
+            chatState.primaryLang = primary;
+            chatState.secondaryLang = secondary;
+            if (!params.display) {
+                chatState.displayLang = primary;
+            }
+            updateLanguageToggleDisplay();
+        }
+    } catch (error) {
+        console.error('Failed to load preferences:', error);
+    }
+}
+
+// Insights Modal Functions (Milestone E2)
+function openInsightsModal() {
+    insightsModal.classList.add('show');
+    updateInsightsContent();
+}
+
+function closeInsightsModal() {
+    insightsModal.classList.remove('show');
+}
+
+function updateInsightsContent() {
+    const vocabularyList = document.getElementById('vocabularyList');
+    const patternsList = document.getElementById('patternsList');
+    const progressStats = document.getElementById('progressStats');
+    
+    if (chatState.messages.length === 0) {
+        // Show placeholder messages
+        vocabularyList.innerHTML = '<p class="placeholder-text">Continue chatting to discover new vocabulary!</p>';
+        patternsList.innerHTML = '<p class="placeholder-text">Keep practicing to identify common sentence structures!</p>';
+        progressStats.innerHTML = '<p class="placeholder-text">Your learning stats will appear here as you chat more.</p>';
+    } else {
+        // Show stubbed insights based on conversation
+        const messageCount = chatState.messages.length;
+        const userMessages = chatState.messages.filter(m => m.role === 'user').length;
+        
+        vocabularyList.innerHTML = `
+            <p class="placeholder-text">📚 Vocabulary insights coming in Phase 2!</p>
+            <p class="placeholder-text" style="margin-top: 10px; font-size: 0.9em;">
+                (Will analyze your ${userMessages} messages for key words and phrases)
+            </p>
+        `;
+        
+        patternsList.innerHTML = `
+            <p class="placeholder-text">🔍 Sentence pattern analysis coming in Phase 2!</p>
+            <p class="placeholder-text" style="margin-top: 10px; font-size: 0.9em;">
+                (Will identify common grammatical structures you're using)
+            </p>
+        `;
+        
+        progressStats.innerHTML = `
+            <div style="text-align: center;">
+                <p style="margin: 0; font-size: 2em; color: #667eea; font-weight: bold;">${messageCount}</p>
+                <p style="margin: 5px 0 0 0; color: #6c757d;">Total Messages</p>
+                <p style="margin: 15px 0 0 0; font-size: 1.5em; color: #764ba2; font-weight: bold;">${userMessages}</p>
+                <p style="margin: 5px 0 0 0; color: #6c757d;">Your Messages</p>
+            </div>
+        `;
+    }
+}
+
+// Save conversation periodically (every 30 seconds)
+setInterval(() => {
+    if (chatState.conversationId && chatState.messages.length > 0) {
+        saveConversationToStorage();
+    }
+}, 30000);
+
