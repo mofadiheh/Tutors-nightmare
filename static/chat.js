@@ -451,7 +451,7 @@ async function checkHealth() {
 }
 
 // Initialize app
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     // Get URL parameters
     const params = getUrlParams();
     
@@ -499,16 +499,15 @@ document.addEventListener('DOMContentLoaded', () => {
     // Focus input
     messageInput.focus();
     
-    // Load conversation from localStorage if exists
-    loadConversationFromStorage();
+    // Load conversation from database if conversation ID exists (Milestone H3)
+    if (params.conversationId) {
+        await loadConversationFromDatabase(params.conversationId);
+    }
     
     // Auto-send topic message if present (only if no messages loaded)
     if (params.topic && chatState.messages.length === 0) {
         handleTopicMessage(params.topic);
     }
-    
-    // Save to localStorage whenever messages change
-    window.addEventListener('beforeunload', saveConversationToStorage);
 });
 
 // LocalStorage Functions (Milestone D3 & F2)
@@ -535,6 +534,52 @@ function saveConversationToStorage() {
         }));
     } catch (error) {
         console.error('Failed to save to localStorage:', error);
+    }
+}
+
+// Load conversation from database (Milestone H3)
+async function loadConversationFromDatabase(conversationId) {
+    try {
+        const response = await fetch(`/api/conversations/${conversationId}`);
+        
+        if (!response.ok) {
+            if (response.status === 404) {
+                console.warn('Conversation not found');
+                // Redirect to home if conversation doesn't exist
+                window.location.href = '/?error=conversation_not_found';
+                return false;
+            }
+            throw new Error('Failed to load conversation');
+        }
+        
+        const data = await response.json();
+        
+        // Update chat state with conversation data
+        chatState.primaryLang = data.primary_lang;
+        chatState.secondaryLang = data.secondary_lang;
+        chatState.mode = data.mode;
+        
+        // Load messages
+        chatState.messages = data.messages.map(msg => ({
+            role: msg.role,
+            text: msg.text,
+            originalLang: msg.original_lang,
+            timestamp: new Date(msg.timestamp),
+            displayText: msg.text // Will be translated if needed
+        }));
+        
+        // Re-render messages
+        rerenderMessages();
+        
+        // Update UI based on loaded state
+        updateLanguageToggleDisplay();
+        updateModeDisplay();
+        
+        return true;
+        
+    } catch (error) {
+        console.error('Error loading conversation:', error);
+        return false;
     }
 }
 
@@ -625,11 +670,3 @@ function updateInsightsContent() {
         `;
     }
 }
-
-// Save conversation periodically (every 30 seconds)
-setInterval(() => {
-    if (chatState.conversationId && chatState.messages.length > 0) {
-        saveConversationToStorage();
-    }
-}, 30000);
-

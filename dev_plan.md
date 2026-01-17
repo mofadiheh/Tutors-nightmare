@@ -272,54 +272,6 @@ A text-only chatbot web app with:
 
 ---
 
-### Milestone G — UI Polish & Responsive Design
-
-**G1. Responsive design for all pages**
-
-- Landing page responsive:
-    - Topic cards stack on mobile
-    - Dropdowns full-width on mobile
-    - Buttons properly sized for touch
-- Chat page responsive:
-    - Full-screen on mobile
-    - Header collapses to icons on small screens
-    - Message bubbles max 85% width on mobile
-    - Input area always visible (sticky)
-- Test on: desktop, tablet (landscape/portrait), mobile (various sizes)
-
-**Done when:** all pages work perfectly on all device sizes.
-
-**G2. Loading and error states**
-
-- Loading indicators:
-    - Page load skeleton/spinner
-    - Message sending (typing indicator)
-    - Language toggle (loading overlay)
-    - API calls (loading states on buttons)
-- Error states:
-    - Failed API calls (show retry button)
-    - Network offline (show offline banner)
-    - Invalid conversation ID (redirect to home)
-- Empty states:
-    - No topics loaded (show error message)
-    - No messages yet (show welcome message)
-
-**Done when:** all possible states are handled with clear UI feedback.
-
-**G3. Animations and micro-interactions**
-
-- Page transitions (smooth fade or slide)
-- Message animations (slide in from right/left)
-- Button hover/active states (scale, color)
-- Language toggle animation (flip or rotate)
-- Typing indicator animation (bouncing dots)
-- Loading spinners (smooth rotation)
-- Focus states for accessibility
-
-**Done when:** UI feels polished, smooth, and professional.
-
----
-
 ## PHASE 2: Backend Implementation (Replace Stubs)
 
 ### Milestone H — Database Setup & Persistence

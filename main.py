@@ -3,7 +3,7 @@ Language-Learning Chatbot - Main Application
 FastAPI backend with static file serving
 """
 
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Query, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -11,8 +11,16 @@ from typing import Optional, List, Union
 import uvicorn
 import uuid
 import asyncio
+import db
+import llm
 
 app = FastAPI(title="Language-Learning Chatbot")
+
+# Database initialization on startup
+@app.on_event("startup")
+async def startup_event():
+    """Initialize database on app startup"""
+    await db.init_db()
 
 # Request/Response models
 class ChatRequest(BaseModel):
@@ -104,41 +112,77 @@ async def get_topics(lang: Optional[str] = Query(default="en")):
     
     return topics
 
-# Chat endpoint (stubbed for now - Milestone C2)
+# Chat endpoint (with LLM integration - Milestone I2)
 @app.post("/api/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
     """
     Send a chat message and receive assistant response
-    Currently returns stubbed responses - will be replaced with real AI in Phase 2
+    Now uses real LLM via OpenRouter (Milestone I2)
+    Persists to database (Milestone H2)
     """
-    # Add 1-2 second delay to simulate LLM processing
-    await asyncio.sleep(1.5)
-    
     # Generate or use existing conversation ID
     conversation_id = request.conversation_id or str(uuid.uuid4())
-    
-    # Stubbed responses based on mode
-    if request.mode == "tutor":
-        # Tutor mode: provide teaching-focused responses
-        stubbed_responses = [
-            "That's a great question! Let me explain that in {lang}. [This is a stubbed tutor response]",
-            "Good effort! Here's a tip: [Stubbed grammar tip in {lang}]",
-            "Excellent! Let's practice that concept more. [Stubbed tutor feedback in {lang}]",
-            "I notice you're working on this pattern. [Stubbed insight in {lang}]",
-        ]
-    else:
-        # Chat mode: provide conversational responses
-        stubbed_responses = [
-            "That's interesting! Tell me more about that. [Stubbed response in {lang}]",
-            "I understand. What do you think about...? [Stubbed response in {lang}]",
-            "That sounds wonderful! [Stubbed response in {lang}]",
-            "I see. How does that make you feel? [Stubbed response in {lang}]",
-        ]
-    
-    # Select response based on message length (pseudo-random)
-    response_index = len(request.user_text) % len(stubbed_responses)
-    assistant_text = stubbed_responses[response_index].format(lang=request.user_lang.upper())
-    
+
+    # Create conversation record if new
+    if not request.conversation_id:
+        await db.create_conversation(
+            conversation_id=conversation_id,
+            primary_lang=request.user_lang,
+            secondary_lang=request.display_lang,
+            mode=request.mode
+        )
+
+    # Insert user message into database
+    await db.insert_message(
+        conversation_id=conversation_id,
+        role="user",
+        lang=request.user_lang,
+        text=request.user_text
+    )
+
+    # Get conversation history for LLM context
+    messages_data = await db.get_messages(conversation_id)
+
+    # Format messages for LLM (include the new user message)
+    conversation_history = []
+    for msg in messages_data:
+        conversation_history.append({
+            "role": msg["role"],
+            "text": msg["text"]
+        })
+
+    # Generate LLM response
+    try:
+        assistant_text = await llm.generate_reply(
+            messages=conversation_history,
+            target_lang=request.user_lang,
+            mode=request.mode
+        )
+
+        # Ensure we got a valid response
+        if not assistant_text or len(assistant_text.strip()) == 0:
+            raise Exception("Empty response from LLM")
+
+    except Exception as e:
+        print(f"LLM generation failed: {e}")
+        print("Falling back to stubbed response...")
+
+        # Fallback to stubbed responses
+        if request.mode == "tutor":
+            stubbed_response = "Sorry something went wrong. Let's try again!"
+        else:
+            stubbed_response = "Sorry something went wrong. Let's try again!"
+
+        assistant_text = stubbed_response.format(lang=request.user_lang.upper())
+
+    # Insert assistant message into database
+    await db.insert_message(
+        conversation_id=conversation_id,
+        role="assistant",
+        lang=request.user_lang,
+        text=assistant_text
+    )
+
     return ChatResponse(
         conversation_id=conversation_id,
         assistant_text=assistant_text,
@@ -152,9 +196,37 @@ async def translate(request: TranslateRequest):
     Translate text from source to target language
     Currently returns stubbed translations - will be replaced with real translation in Phase 2
     """
-    # Add small delay to simulate API call (200-500ms)
-    await asyncio.sleep(0.3)
-    
+    if isinstance(request.text, str):
+        text = [request.text]
+    else:
+        text = request.text
+    text_to_translate = []
+    translated_text = []
+    first_new_msg_index = 0
+    for t in text:
+        cached = await db.get_translation(t)
+        if cached:
+            print(f"Using cached translation for: {t}")
+            translated_text.append(cached)
+            first_new_msg_index += 1
+        else:
+            print(f"No cached translation for: {t}")
+            break
+
+    if first_new_msg_index < len(text):
+        text_to_translate = text[first_new_msg_index:]
+        new_translations = await llm.translate_text(text_to_translate, request.target_lang)
+        print(f"New translations: {new_translations}")
+        for i, t in enumerate(text_to_translate):
+            # Save bidirectional mapping (original <-> translated)
+            await db.save_translation(t, new_translations[i])
+        translated_text.extend(new_translations)
+    if isinstance(request.text, str):
+        return TranslateResponse(translated_text=translated_text[0])
+    else:
+        return TranslateResponse(translated_text=translated_text)
+            
+
     # Stub logic: prefix text with translation marker
     if isinstance(request.text, str):
         translated = f"[Translated to {request.target_lang.upper()}] {request.text}"
@@ -164,25 +236,41 @@ async def translate(request: TranslateRequest):
         translated = [f"[Translated to {request.target_lang.upper()}] {t}" for t in request.text]
         return TranslateResponse(translated_text=translated)
 
-# Conversation history endpoint (stubbed for now - Milestone D3)
+# Conversation history endpoint (with database - Milestone H2)
 @app.get("/api/conversations/{conversation_id}", response_model=ConversationResponse)
-async def get_conversation(
+async def get_conversation_history(
     conversation_id: str,
     display_lang: Optional[str] = Query(default="en")
 ):
     """
-    Get conversation history by ID
-    Currently returns stubbed data - will use localStorage on client side for Phase 1
-    In Phase 2, this will fetch from database
+    Get conversation history by ID from database
+    Returns messages in original language (translation handled separately)
     """
-    # For now, return empty conversation structure
-    # The frontend will manage messages via localStorage
+    # Check if conversation exists
+    conversation = await db.get_conversation(conversation_id)
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    
+    # Get all messages for this conversation
+    messages_data = await db.get_messages(conversation_id)
+    
+    # Format messages for response
+    messages = []
+    for msg in messages_data:
+        messages.append(Message(
+            id=str(msg['id']),
+            role=msg['role'],
+            text=msg['text'],
+            original_lang=msg['lang'],
+            timestamp=msg['created_at']
+        ))
+    
     return ConversationResponse(
-        conversation_id=conversation_id,
-        primary_lang="es",
-        secondary_lang="en",
-        mode="chat",
-        messages=[]
+        conversation_id=conversation['id'],
+        primary_lang=conversation['primary_lang'],
+        secondary_lang=conversation['secondary_lang'],
+        mode=conversation['mode'],
+        messages=messages
     )
 
 # Serve static files
