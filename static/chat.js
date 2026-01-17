@@ -46,10 +46,7 @@ const sendButton = document.getElementById('sendButton');
 const statusIndicator = document.getElementById('statusIndicator');
 const homeButton = document.getElementById('homeButton');
 const languageToggle = document.getElementById('languageToggle');
-const tutorModeButton = document.getElementById('tutorModeButton');
-const insightsButton = document.getElementById('insightsButton');
-const insightsModal = document.getElementById('insightsModal');
-const closeInsights = document.getElementById('closeInsights');
+const languageCheckbox = document.getElementById('languageCheckbox');
 const currentLangSpan = document.getElementById('currentLang');
 const targetLangSpan = document.getElementById('targetLang');
 
@@ -131,25 +128,22 @@ function updateLanguageToggleDisplay() {
     currentLangSpan.textContent = chatState.primaryLang.toUpperCase();
     targetLangSpan.textContent = chatState.secondaryLang.toUpperCase();
     
+    // Update checkbox state and label styling
+    languageCheckbox.checked = !isDisplayingPrimary;
+    
     // Highlight current display language
     if (isDisplayingPrimary) {
-        currentLangSpan.style.fontWeight = 'bold';
-        targetLangSpan.style.fontWeight = 'normal';
+        currentLangSpan.classList.add('active');
+        targetLangSpan.classList.remove('active');
     } else {
-        currentLangSpan.style.fontWeight = 'normal';
-        targetLangSpan.style.fontWeight = 'bold';
+        currentLangSpan.classList.remove('active');
+        targetLangSpan.classList.add('active');
     }
 }
 
 // Update mode indicator
 function updateModeDisplay() {
-    if (chatState.mode === 'tutor') {
-        tutorModeButton.classList.add('active');
-        tutorModeButton.title = 'Exit Tutor Mode';
-    } else {
-        tutorModeButton.classList.remove('active');
-        tutorModeButton.title = 'Enter Tutor Mode';
-    }
+    // Tutor mode button removed - function kept for compatibility
 }
 
 // Send message to API
@@ -484,17 +478,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Set up event listeners
     chatForm.addEventListener('submit', handleSubmit);
     homeButton.addEventListener('click', handleHomeButton);
-    languageToggle.addEventListener('click', handleLanguageToggle);
-    tutorModeButton.addEventListener('click', handleTutorMode);
-    insightsButton.addEventListener('click', openInsightsModal);
-    closeInsights.addEventListener('click', closeInsightsModal);
-    
-    // Close modal when clicking outside
-    insightsModal.addEventListener('click', (e) => {
-        if (e.target === insightsModal) {
-            closeInsightsModal();
-        }
-    });
+    languageCheckbox.addEventListener('change', handleLanguageToggle);
     
     // Focus input
     messageInput.focus();

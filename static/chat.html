@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Language Tutor - Chat</title>
-    <link rel="stylesheet" href="/static/chat.css">
+    <link rel="stylesheet" href="/static/chat.css?v=3">
 </head>
 <body>
     <div class="chat-container">
@@ -25,26 +25,14 @@
             </div>
 
             <div class="header-actions">
-                <button id="languageToggle" class="header-button" title="Toggle language">
-                    <span id="currentLang">ES</span>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <polyline points="17 1 21 5 17 9"></polyline>
-                        <path d="M3 11V9a4 4 0 0 1 4-4h14"></path>
-                        <polyline points="7 23 3 19 7 15"></polyline>
-                        <path d="M21 13v2a4 4 0 0 1-4 4H3"></path>
-                    </svg>
-                    <span id="targetLang">EN</span>
-                </button>
-                
-                <button id="insightsButton" class="header-button insights-button" title="View Insights">
-                    <span>📊</span>
-                    <span class="button-text">Insights</span>
-                </button>
-                
-                <button id="tutorModeButton" class="header-button tutor-button" title="Tutor Mode">
-                    <span>💡</span>
-                    <span class="button-text">Tutor</span>
-                </button>
+                <div class="language-toggle-container">
+                    <span class="toggle-label" id="currentLang">ES</span>
+                    <label class="toggle-switch" id="languageToggle" title="Toggle language">
+                        <input type="checkbox" id="languageCheckbox">
+                        <span class="toggle-slider"></span>
+                    </label>
+                    <span class="toggle-label" id="targetLang">EN</span>
+                </div>
             </div>
         </div>
         
@@ -103,6 +91,6 @@
             </form>
         </div>
     </div>
-    <script src="/static/chat.js"></script>
+    <script src="/static/chat.js?v=4"></script>
 </body>
 </html>
