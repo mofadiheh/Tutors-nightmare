@@ -50,6 +50,15 @@ const languageCheckbox = document.getElementById('languageCheckbox');
 const currentLangSpan = document.getElementById('currentLang');
 const targetLangSpan = document.getElementById('targetLang');
 
+// Tutor pane elements
+const tutorPane = document.getElementById('tutorPane');
+const tutorPaneToggle = document.getElementById('tutorPaneToggle');
+const closeTutorPane = document.getElementById('closeTutorPane');
+const tutorMessagesContainer = document.getElementById('tutorMessagesContainer');
+const tutorChatForm = document.getElementById('tutorChatForm');
+const tutorMessageInput = document.getElementById('tutorMessageInput');
+const tutorSendButton = document.getElementById('tutorSendButton');
+
 // Format time for messages
 function formatTime(date) {
     return date.toLocaleTimeString('en-US', { 
@@ -157,7 +166,8 @@ async function sendMessageToAPI(userText) {
             body: JSON.stringify({
                 conversation_id: chatState.conversationId,
                 user_text: userText,
-                user_lang: chatState.primaryLang,
+                primary_lang: chatState.primaryLang,
+                secondary_lang: chatState.secondaryLang,
                 display_lang: chatState.displayLang,
                 mode: chatState.mode
             })
@@ -357,6 +367,132 @@ async function handleLanguageToggle() {
     await translateMessages();
 }
 
+// Toggle tutor pane visibility
+function toggleTutorPane() {
+    const isActive = tutorPane.classList.toggle('active');
+    tutorPaneToggle.classList.toggle('active', isActive);
+    
+    if (isActive) {
+        tutorMessageInput.focus();
+    } else {
+        messageInput.focus();
+    }
+}
+
+// Close tutor pane
+function closeTutorPaneHandler() {
+    tutorPane.classList.remove('active');
+    tutorPaneToggle.classList.remove('active');
+    messageInput.focus();
+}
+
+// Add message to tutor UI
+function addTutorMessage(text, role) {
+    // Remove welcome message if it exists
+    const welcomeMessage = tutorMessagesContainer.querySelector('.welcome-message');
+    if (welcomeMessage) {
+        welcomeMessage.remove();
+    }
+    
+    const messageBubble = createMessageBubble(text, role);
+    tutorMessagesContainer.appendChild(messageBubble);
+    
+    // Scroll to bottom
+    tutorMessagesContainer.scrollTop = tutorMessagesContainer.scrollHeight;
+    
+    return messageBubble;
+}
+
+// Show typing indicator in tutor pane
+function showTutorTypingIndicator() {
+    const messageDiv = document.createElement('div');
+    messageDiv.className = 'message assistant loading';
+    messageDiv.id = 'tutorTypingIndicator';
+    
+    const bubbleDiv = document.createElement('div');
+    bubbleDiv.className = 'message-bubble';
+    
+    const typingIndicator = document.createElement('div');
+    typingIndicator.className = 'typing-indicator';
+    typingIndicator.innerHTML = '<span></span><span></span><span></span>';
+    
+    bubbleDiv.appendChild(typingIndicator);
+    messageDiv.appendChild(bubbleDiv);
+    tutorMessagesContainer.appendChild(messageDiv);
+    
+    tutorMessagesContainer.scrollTop = tutorMessagesContainer.scrollHeight;
+}
+
+// Remove typing indicator from tutor pane
+function removeTutorTypingIndicator() {
+    const indicator = document.getElementById('tutorTypingIndicator');
+    if (indicator) {
+        indicator.remove();
+    }
+}
+
+// Handle tutor chat submission
+async function handleTutorSubmit(e) {
+    e.preventDefault();
+    
+    const tutorMessage = tutorMessageInput.value.trim();
+    if (!tutorMessage) return;
+    
+    // Add user message to tutor UI
+    addTutorMessage(tutorMessage, 'user');
+    
+    // Clear input
+    tutorMessageInput.value = '';
+    
+    // Disable input while processing
+    tutorMessageInput.disabled = true;
+    tutorSendButton.disabled = true;
+    
+    // Show typing indicator
+    showTutorTypingIndicator();
+    
+    try {
+        // Send to API with mode='tutor'
+        const response = await fetch('/api/chat', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                conversation_id: chatState.conversationId,
+                user_text: tutorMessage,
+                primary_lang: chatState.primaryLang,
+                secondary_lang: chatState.secondaryLang,
+                display_lang: chatState.displayLang,
+                mode: 'tutor'
+            })
+        });
+        
+        if (!response.ok) {
+            throw new Error('Failed to send message');
+        }
+        
+        const data = await response.json();
+        
+        removeTutorTypingIndicator();
+        
+        // Add tutor response
+        addTutorMessage(data.assistant_text, 'assistant');
+        
+    } catch (error) {
+        removeTutorTypingIndicator();
+        
+        // Show error message
+        const errorMsg = 'Sorry, I encountered an error. Please try again.';
+        addTutorMessage(errorMsg, 'assistant');
+    } finally {
+        // Re-enable input
+        tutorMessageInput.disabled = false;
+        tutorSendButton.disabled = false;
+        tutorMessageInput.focus();
+    }
+}
+
 // Handle tutor mode toggle
 function handleTutorMode() {
     if (chatState.mode === 'tutor') {
@@ -479,6 +615,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     chatForm.addEventListener('submit', handleSubmit);
     homeButton.addEventListener('click', handleHomeButton);
     languageCheckbox.addEventListener('change', handleLanguageToggle);
+    
+    // Tutor pane event listeners
+    tutorPaneToggle.addEventListener('click', toggleTutorPane);
+    closeTutorPane.addEventListener('click', closeTutorPaneHandler);
+    tutorChatForm.addEventListener('submit', handleTutorSubmit);
     
     // Focus input
     messageInput.focus();

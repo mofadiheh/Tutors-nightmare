@@ -173,7 +173,7 @@ async def get_messages(conversation_id: str, limit: int = 100) -> List[Dict]:
     try:
         cursor = await db.execute(
             """
-            SELECT id, conversation_id, role, lang, text, created_at
+            SELECT conversation_id, role, lang, text, created_at
             FROM messages
             WHERE conversation_id = ?
             ORDER BY created_at ASC

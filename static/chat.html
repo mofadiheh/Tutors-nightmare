@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Language Tutor - Chat</title>
-    <link rel="stylesheet" href="/static/chat.css?v=3">
+    <link rel="stylesheet" href="/static/chat.css?v=5">
 </head>
 <body>
     <div class="chat-container">
@@ -25,6 +25,11 @@
             </div>
 
             <div class="header-actions">
+                <button id="tutorPaneToggle" class="header-button tutor-toggle-btn" title="Toggle AI Tutor">
+                    <span>💡</span>
+                    <span class="button-text">AI Tutor</span>
+                </button>
+                
                 <div class="language-toggle-container">
                     <span class="toggle-label" id="currentLang">ES</span>
                     <label class="toggle-switch" id="languageToggle" title="Toggle language">
@@ -36,9 +41,71 @@
             </div>
         </div>
         
-        <div class="messages-container" id="messagesContainer">
-            <div class="welcome-message">
-                <p>👋 Welcome! I'm your language tutor. Start chatting to practice your language skills.</p>
+        <div class="chat-content-wrapper">
+            <!-- Main Conversation Pane -->
+            <div class="main-chat-pane">
+                <div class="messages-container" id="messagesContainer">
+                    <div class="welcome-message">
+                        <p>👋 Welcome! I'm your language tutor. Start chatting to practice your language skills.</p>
+                    </div>
+                </div>
+                
+                <div class="input-container">
+                    <form id="chatForm" class="chat-form">
+                        <input 
+                            type="text" 
+                            id="messageInput" 
+                            class="message-input" 
+                            placeholder="Type your message..." 
+                            autocomplete="off"
+                            required
+                        />
+                        <button type="submit" class="send-button" id="sendButton">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <line x1="22" y1="2" x2="11" y2="13"></line>
+                                <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                            </svg>
+                        </button>
+                    </form>
+                </div>
+            </div>
+            
+            <!-- AI Tutor Pane -->
+            <div class="tutor-pane" id="tutorPane">
+                <div class="tutor-header">
+                    <h2>💡 Your AI Tutor</h2>
+                    <button id="closeTutorPane" class="close-tutor-btn" title="Close tutor">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="18" y1="6" x2="6" y2="18"></line>
+                            <line x1="6" y1="6" x2="18" y2="18"></line>
+                        </svg>
+                    </button>
+                </div>
+                
+                <div class="messages-container tutor-messages" id="tutorMessagesContainer">
+                    <div class="welcome-message">
+                        <p>👋 Hi! I'm your AI tutor. Ask me anything about the conversation or language learning!</p>
+                    </div>
+                </div>
+                
+                <div class="input-container tutor-input">
+                    <form id="tutorChatForm" class="chat-form">
+                        <input 
+                            type="text" 
+                            id="tutorMessageInput" 
+                            class="message-input" 
+                            placeholder="Ask your tutor..." 
+                            autocomplete="off"
+                            required
+                        />
+                        <button type="submit" class="send-button" id="tutorSendButton">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <line x1="22" y1="2" x2="11" y2="13"></line>
+                                <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                            </svg>
+                        </button>
+                    </form>
+                </div>
             </div>
         </div>
         
@@ -71,26 +138,7 @@
                 </div>
             </div>
         </div>
-        
-        <div class="input-container">
-            <form id="chatForm" class="chat-form">
-                <input 
-                    type="text" 
-                    id="messageInput" 
-                    class="message-input" 
-                    placeholder="Type your message..." 
-                    autocomplete="off"
-                    required
-                />
-                <button type="submit" class="send-button" id="sendButton">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <line x1="22" y1="2" x2="11" y2="13"></line>
-                        <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-                    </svg>
-                </button>
-            </form>
-        </div>
     </div>
-    <script src="/static/chat.js?v=4"></script>
+    <script src="/static/chat.js?v=6"></script>
 </body>
 </html>

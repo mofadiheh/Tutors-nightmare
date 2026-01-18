@@ -27,8 +27,9 @@ class ChatRequest(BaseModel):
     """Chat message request"""
     conversation_id: Optional[str] = None
     user_text: str
-    user_lang: str = "es"
-    display_lang: str = "es"
+    primary_lang: str = "es"  # User's native/learning language
+    secondary_lang: str = "en"  # Assistant's language
+    display_lang: str = "es"  # Currently displayed language
     mode: str = "chat"  # "chat" or "tutor"
 
 class ChatResponse(BaseModel):
@@ -120,6 +121,8 @@ async def chat(request: ChatRequest):
     Now uses real LLM via OpenRouter (Milestone I2)
     Persists to database (Milestone H2)
     """
+    print(f"Received chat request. Primary Lang: {request.primary_lang}, Secondary Lang: {request.secondary_lang}, Display Lang: {request.display_lang}, mode: {request.mode}")
+
     # Generate or use existing conversation ID
     conversation_id = request.conversation_id or str(uuid.uuid4())
 
@@ -127,8 +130,8 @@ async def chat(request: ChatRequest):
     if not request.conversation_id:
         await db.create_conversation(
             conversation_id=conversation_id,
-            primary_lang=request.user_lang,
-            secondary_lang=request.display_lang,
+            primary_lang=request.primary_lang,
+            secondary_lang=request.secondary_lang,
             mode=request.mode
         )
 
@@ -136,7 +139,7 @@ async def chat(request: ChatRequest):
     await db.insert_message(
         conversation_id=conversation_id,
         role="user",
-        lang=request.user_lang,
+        lang=request.primary_lang,
         text=request.user_text
     )
 
@@ -155,7 +158,7 @@ async def chat(request: ChatRequest):
     try:
         assistant_text = await llm.generate_reply(
             messages=conversation_history,
-            target_lang=request.user_lang,
+            target_lang=request.secondary_lang,
             mode=request.mode
         )
 
@@ -173,20 +176,20 @@ async def chat(request: ChatRequest):
         else:
             stubbed_response = "Sorry something went wrong. Let's try again!"
 
-        assistant_text = stubbed_response.format(lang=request.user_lang.upper())
+        assistant_text = stubbed_response.format(lang=request.secondary_lang.upper())
 
     # Insert assistant message into database
     await db.insert_message(
         conversation_id=conversation_id,
         role="assistant",
-        lang=request.user_lang,
+        lang=request.secondary_lang,
         text=assistant_text
     )
 
     return ChatResponse(
         conversation_id=conversation_id,
         assistant_text=assistant_text,
-        assistant_lang=request.user_lang
+        assistant_lang=request.secondary_lang
     )
 
 # Translation endpoint (stubbed for now - Milestone D2)
@@ -196,6 +199,7 @@ async def translate(request: TranslateRequest):
     Translate text from source to target language
     Currently returns stubbed translations - will be replaced with real translation in Phase 2
     """
+    print(f"Received translation request from {request.source_lang} to {request.target_lang}")
     if isinstance(request.text, str):
         text = [request.text]
     else:
@@ -206,17 +210,20 @@ async def translate(request: TranslateRequest):
     for t in text:
         cached = await db.get_translation(t)
         if cached:
-            print(f"Using cached translation for: {t}")
             translated_text.append(cached)
             first_new_msg_index += 1
         else:
-            print(f"No cached translation for: {t}")
             break
+
+    for i in range(first_new_msg_index):
+        print(f"Cache hit for text: {text[i]} -> {translated_text[i]}")
+    for t in translated_text:
+        cached = await db.get_translation(t)
+        print(f"Cache hit for translated text: {t} -> {cached}")
 
     if first_new_msg_index < len(text):
         text_to_translate = text[first_new_msg_index:]
         new_translations = await llm.translate_text(text_to_translate, request.target_lang)
-        print(f"New translations: {new_translations}")
         for i, t in enumerate(text_to_translate):
             # Save bidirectional mapping (original <-> translated)
             await db.save_translation(t, new_translations[i])
