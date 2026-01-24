@@ -384,9 +384,13 @@ body {
 .message-bubble {
     max-width: 70%;
     padding: 12px 18px;
+    padding-left: 24px;
     border-radius: 18px;
     word-wrap: break-word;
+    overflow-wrap: break-word;
+    word-break: break-word;
     line-height: 1.5;
+    overflow: hidden;
 }
 
 .message.user .message-bubble {
@@ -411,6 +415,105 @@ body {
 
 .message.assistant .message-time {
     text-align: left;
+}
+
+/* Markdown Styling in Message Bubbles */
+.message-bubble h1,
+.message-bubble h2,
+.message-bubble h3,
+.message-bubble h4,
+.message-bubble h5,
+.message-bubble h6 {
+    margin: 12px 0 8px 0;
+    font-weight: 600;
+}
+
+.message-bubble h1 {
+    font-size: 1.4em;
+}
+
+.message-bubble h2 {
+    font-size: 1.25em;
+}
+
+.message-bubble h3 {
+    font-size: 1.1em;
+}
+
+.message-bubble h4,
+.message-bubble h5,
+.message-bubble h6 {
+    font-size: 1em;
+}
+
+.message-bubble strong {
+    font-weight: 600;
+}
+
+.message-bubble em {
+    font-style: italic;
+}
+
+.message-bubble code {
+    background: rgba(0, 0, 0, 0.1);
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-family: 'Courier New', monospace;
+    font-size: 0.9em;
+}
+
+.message-bubble pre {
+    background: rgba(0, 0, 0, 0.1);
+    padding: 10px;
+    border-radius: 5px;
+    overflow-x: auto;
+    margin: 8px 0;
+    font-family: 'Courier New', monospace;
+    font-size: 0.9em;
+}
+
+.message-bubble pre code {
+    background: transparent;
+    padding: 0;
+    border-radius: 0;
+}
+
+.message-bubble ul,
+.message-bubble ol {
+    margin: 8px 0;
+    padding-left: 24px;
+    list-style-position: outside;
+}
+
+.message-bubble li {
+    margin: 4px 0;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+}
+
+.message-bubble blockquote {
+    margin: 8px 0;
+    padding-left: 12px;
+    border-left: 3px solid rgba(0, 0, 0, 0.2);
+    opacity: 0.8;
+}
+
+.message-bubble a {
+    color: inherit;
+    text-decoration: underline;
+    opacity: 0.9;
+}
+
+.message-bubble p {
+    margin: 8px 0;
+}
+
+.message-bubble p:first-child {
+    margin-top: 0;
+}
+
+.message-bubble p:last-child {
+    margin-bottom: 0;
 }
 
 /* Input Container */

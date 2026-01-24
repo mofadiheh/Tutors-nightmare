@@ -76,7 +76,13 @@ function createMessageBubble(text, role, timestamp = new Date()) {
     
     const bubbleDiv = document.createElement('div');
     bubbleDiv.className = 'message-bubble';
-    bubbleDiv.textContent = text;
+    
+    // For assistant messages, parse markdown; for user messages, use plain text
+    if (role === 'assistant') {
+        bubbleDiv.innerHTML = marked.parse(text);
+    } else {
+        bubbleDiv.textContent = text;
+    }
     
     const timeDiv = document.createElement('div');
     timeDiv.className = 'message-time';
