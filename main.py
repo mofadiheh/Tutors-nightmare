@@ -215,12 +215,6 @@ async def translate(request: TranslateRequest):
         else:
             break
 
-    for i in range(first_new_msg_index):
-        print(f"Cache hit for text: {text[i]} -> {translated_text[i]}")
-    for t in translated_text:
-        cached = await db.get_translation(t)
-        print(f"Cache hit for translated text: {t} -> {cached}")
-
     if first_new_msg_index < len(text):
         text_to_translate = text[first_new_msg_index:]
         new_translations = await llm.translate_text(text_to_translate, request.target_lang)

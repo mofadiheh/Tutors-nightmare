@@ -202,6 +202,9 @@ async function sendMessageToAPI(userText) {
 
 // Handle form submission
 async function handleSubmit(e) {
+    console.log('handleSubmit called');
+    // Log current display language
+    console.log('Current display language:', chatState.displayLang);
     e.preventDefault();
     
     const userMessage = messageInput.value.trim();
@@ -260,6 +263,7 @@ async function handleSubmit(e) {
 
 // Translate messages to display language
 async function translateMessages() {
+    console.log('translateMessages called');
     if (chatState.messages.length === 0) return;
     
     // Show loading indicator
@@ -311,6 +315,7 @@ async function translateMessages() {
 
 // Re-render all messages in the UI
 function rerenderMessages() {
+    console.log('rerenderMessages called');
     // Clear message container but keep welcome message logic
     const hasMessages = chatState.messages.length > 0;
     messagesContainer.innerHTML = '';
@@ -346,6 +351,7 @@ function rerenderMessages() {
 
 // Handle language toggle
 async function handleLanguageToggle() {
+    console.log('handleLanguageToggle called');
     // Toggle between primary and secondary language
     if (chatState.displayLang === chatState.primaryLang) {
         chatState.displayLang = chatState.secondaryLang;
