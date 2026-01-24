@@ -15,7 +15,8 @@ from datetime import datetime
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 #MODEL_NAME = "xiaomi/mimo-v2-flash:free"
-MODEL_NAME = "nvidia/nemotron-3-nano-30b-a3b:free"
+#MODEL_NAME = "nvidia/nemotron-3-nano-30b-a3b:free"
+MODEL_NAME = "openai/gpt-oss-120b:free"
 
 # Load system prompts from YAML file
 def _load_prompts() -> Dict[str, Dict]:
@@ -208,6 +209,7 @@ async def translate_text(text: Union[str, List[str]], target_lang: str) -> Union
                 if 'choices' in data and len(data['choices']) > 0:
                     choice = data['choices'][0]
                     if 'message' in choice and 'content' in choice['message']:
+                        translated_text = choice['message']['content'].strip()
                         return choice['message']['content'].strip()
 
                 print(f"Unexpected API response format (translate): {data}")

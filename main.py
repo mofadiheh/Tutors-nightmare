@@ -141,7 +141,7 @@ async def chat(request: ChatRequest):
 
         stubbed_response = "Sorry something went wrong. Let's try again!"
 
-        assistant_text = stubbed_response.format(lang=request.secondary_lang.upper())
+        assistant_text = stubbed_response
 
 
     return ChatResponse(
