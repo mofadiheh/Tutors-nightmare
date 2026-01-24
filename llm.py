@@ -7,6 +7,7 @@ import os
 import httpx
 import json
 import asyncio
+import yaml
 from typing import List, Dict, Optional, Union
 from datetime import datetime
 
@@ -16,15 +17,23 @@ OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 #MODEL_NAME = "xiaomi/mimo-v2-flash:free"
 MODEL_NAME = "nvidia/nemotron-3-nano-30b-a3b:free"
 
-# System prompts for different modes
-CHAT_SYSTEM_PROMPT = """You are a helpful language tutor. Have natural conversations and gently correct mistakes.
-Respond in {target_lang}. Keep responses conversational and engaging."""
+# Load system prompts from YAML file
+def _load_prompts() -> Dict[str, Dict]:
+    """Load system prompts from prompts.yaml file"""
+    prompts_file = os.path.join(os.path.dirname(__file__), "prompts.yaml")
+    try:
+        with open(prompts_file, 'r', encoding='utf-8') as f:
+            prompts = yaml.safe_load(f)
+        return prompts
+    except FileNotFoundError:
+        print(f"Warning: prompts.yaml not found at {prompts_file}")
+        return {}
+    except yaml.YAMLError as e:
+        print(f"Error parsing prompts.yaml: {e}")
+        return {}
 
-TUTOR_SYSTEM_PROMPT = """You are a language tutor answering questions about vocabulary, grammar, and language usage.
-Be clear and educational. Respond in {target_lang}. Focus on teaching and explaining concepts."""
-
-TRANSLATOR_SYSTEM_PROMPT = """You are a professional translator. Translate the given text accurately into {target_lang}. 
-Only provide the translated text without additional commentary."""
+# Initialize prompts
+SYSTEM_PROMPTS = _load_prompts()
 
 async def generate_reply(
     messages: List[Dict],
@@ -37,7 +46,7 @@ async def generate_reply(
 
     Args:
         messages: List of message dicts with 'role' and 'text' keys
-        target_lang: Target language code (e.g., 'es', 'fr')
+        target_lang: Target language code (e.g., 'en', 'de', 'fr', 'es')
         mode: 'chat' or 'tutor'
         system_prompt: Custom system prompt (optional)
 
@@ -47,12 +56,22 @@ async def generate_reply(
     if not OPENROUTER_API_KEY:
         raise ValueError("OPENROUTER_API_KEY environment variable not set")
 
-    # Select system prompt based on mode
+    # Select system prompt based on mode and language
     if system_prompt is None:
-        if mode == "tutor":
-            system_prompt = TUTOR_SYSTEM_PROMPT.format(target_lang=target_lang.upper())
-        else:
-            system_prompt = CHAT_SYSTEM_PROMPT.format(target_lang=target_lang.upper())
+        lang_code = target_lang.lower()
+        if lang_code in SYSTEM_PROMPTS:
+            lang_prompts = SYSTEM_PROMPTS[lang_code]
+            if mode == "tutor" and "tutor" in lang_prompts:
+                system_prompt = lang_prompts["tutor"]
+            elif "chat" in lang_prompts:
+                system_prompt = lang_prompts["chat"]
+        
+        # Fallback to English if language not found
+        if system_prompt is None:
+            if mode == "tutor" and "en" in SYSTEM_PROMPTS and "tutor" in SYSTEM_PROMPTS["en"]:
+                system_prompt = SYSTEM_PROMPTS["en"]["tutor"]
+            else:
+                system_prompt = SYSTEM_PROMPTS.get("en", {}).get("chat", "You are a helpful language tutor.")
 
     # Prepare messages for OpenRouter API
     api_messages = [
@@ -139,7 +158,7 @@ async def translate_text(text: Union[str, List[str]], target_lang: str) -> Union
 
     Args:
         text: Text string or list of strings to translate
-        target_lang: Target language code (e.g., 'es', 'fr')
+        target_lang: Target language code (e.g., 'en', 'de', 'fr', 'es')
 
     Returns:
         Translated text string or list of strings
@@ -147,7 +166,12 @@ async def translate_text(text: Union[str, List[str]], target_lang: str) -> Union
     if not OPENROUTER_API_KEY:
         raise ValueError("OPENROUTER_API_KEY environment variable not set")
 
-    system_prompt = TRANSLATOR_SYSTEM_PROMPT.format(target_lang=target_lang.upper())
+    # Get translator prompt for target language
+    lang_code = target_lang.lower()
+    if lang_code in SYSTEM_PROMPTS and "translator" in SYSTEM_PROMPTS:
+        system_prompt = SYSTEM_PROMPTS["translator"].get(lang_code, SYSTEM_PROMPTS["translator"].get("en", "You are a professional translator."))
+    else:
+        system_prompt = SYSTEM_PROMPTS.get("translator", {}).get("en", "You are a professional translator.")
 
     async def _translate_one(t: str) -> str:
         api_messages = [

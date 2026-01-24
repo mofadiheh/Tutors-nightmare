@@ -26,10 +26,8 @@ async def startup_event():
 class ChatRequest(BaseModel):
     """Chat message request"""
     conversation_id: Optional[str] = None
-    user_text: str
-    primary_lang: str = "es"  # User's native/learning language
-    secondary_lang: str = "en"  # Assistant's language
-    display_lang: str = "es"  # Currently displayed language
+    messages: List[dict]  # List of message dicts with 'role', 'text'
+    language: str  # Language of the conversation
     mode: str = "chat"  # "chat" or "tutor"
 
 class ChatResponse(BaseModel):
@@ -121,44 +119,15 @@ async def chat(request: ChatRequest):
     Now uses real LLM via OpenRouter (Milestone I2)
     Persists to database (Milestone H2)
     """
-    print(f"Received chat request. Primary Lang: {request.primary_lang}, Secondary Lang: {request.secondary_lang}, Display Lang: {request.display_lang}, mode: {request.mode}")
 
     # Generate or use existing conversation ID
     conversation_id = request.conversation_id or str(uuid.uuid4())
 
-    # Create conversation record if new
-    if not request.conversation_id:
-        await db.create_conversation(
-            conversation_id=conversation_id,
-            primary_lang=request.primary_lang,
-            secondary_lang=request.secondary_lang,
-            mode=request.mode
-        )
-
-    # Insert user message into database
-    await db.insert_message(
-        conversation_id=conversation_id,
-        role="user",
-        lang=request.primary_lang,
-        text=request.user_text
-    )
-
-    # Get conversation history for LLM context
-    messages_data = await db.get_messages(conversation_id)
-
-    # Format messages for LLM (include the new user message)
-    conversation_history = []
-    for msg in messages_data:
-        conversation_history.append({
-            "role": msg["role"],
-            "text": msg["text"]
-        })
-
     # Generate LLM response
     try:
         assistant_text = await llm.generate_reply(
-            messages=conversation_history,
-            target_lang=request.secondary_lang,
+            messages=request.messages,
+            target_lang=request.language,
             mode=request.mode
         )
 
@@ -170,26 +139,15 @@ async def chat(request: ChatRequest):
         print(f"LLM generation failed: {e}")
         print("Falling back to stubbed response...")
 
-        # Fallback to stubbed responses
-        if request.mode == "tutor":
-            stubbed_response = "Sorry something went wrong. Let's try again!"
-        else:
-            stubbed_response = "Sorry something went wrong. Let's try again!"
+        stubbed_response = "Sorry something went wrong. Let's try again!"
 
         assistant_text = stubbed_response.format(lang=request.secondary_lang.upper())
 
-    # Insert assistant message into database
-    await db.insert_message(
-        conversation_id=conversation_id,
-        role="assistant",
-        lang=request.secondary_lang,
-        text=assistant_text
-    )
 
     return ChatResponse(
         conversation_id=conversation_id,
         assistant_text=assistant_text,
-        assistant_lang=request.secondary_lang
+        assistant_lang=request.language
     )
 
 # Translation endpoint (stubbed for now - Milestone D2)

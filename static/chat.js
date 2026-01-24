@@ -2,10 +2,12 @@
 
 // Chat state management
 const chatState = {
-    messages: [],
+    messages_primary: [],
+    messages_secondary: [],
+    messages_tutor: [],
     conversationId: null,
-    primaryLang: 'es',
-    secondaryLang: 'en',
+    primaryLang: 'es', // I'm learning Language
+    secondaryLang: 'en', // I speak Language
     displayLang: 'es',
     mode: 'chat', // 'chat' or 'tutor'
     topicId: null
@@ -158,6 +160,24 @@ function updateModeDisplay() {
 // Send message to API
 async function sendMessageToAPI(userText) {
     try {
+        const messagesPayload = [];
+        // Prepare messages based on display language
+        if (chatState.displayLang === chatState.primaryLang) {
+            chatState.messages_primary.forEach(msg => {
+                messagesPayload.push({
+                    role: msg.role,
+                    text: msg.text
+                });
+            });
+        } else {
+            chatState.messages_secondary.forEach(msg => {
+                messagesPayload.push({
+                    role: msg.role,
+                    text: msg.text
+                });
+            });
+        }
+
         const response = await fetch('/api/chat', {
             method: 'POST',
             headers: {
@@ -165,10 +185,8 @@ async function sendMessageToAPI(userText) {
             },
             body: JSON.stringify({
                 conversation_id: chatState.conversationId,
-                user_text: userText,
-                primary_lang: chatState.primaryLang,
-                secondary_lang: chatState.secondaryLang,
-                display_lang: chatState.displayLang,
+                messages: messagesPayload,
+                language: chatState.displayLang,
                 mode: chatState.mode
             })
         });
@@ -205,6 +223,8 @@ async function handleSubmit(e) {
     console.log('handleSubmit called');
     // Log current display language
     console.log('Current display language:', chatState.displayLang);
+    console.log('Primary language:', chatState.primaryLang);
+    console.log('Secondary language:', chatState.secondaryLang);
     e.preventDefault();
     
     const userMessage = messageInput.value.trim();
@@ -213,13 +233,23 @@ async function handleSubmit(e) {
     // Add user message to UI
     addMessageToUI(userMessage, 'user');
     
-    // Store message in state
-    chatState.messages.push({
-        role: 'user',
-        text: userMessage,
-        originalLang: chatState.primaryLang,
-        timestamp: new Date()
-    });
+    if (chatState.displayLang === chatState.primaryLang) {
+        // Store message in state
+        chatState.messages_primary.push({
+            role: 'user',
+            text: userMessage,
+            originalLang: chatState.primaryLang,
+            timestamp: new Date()
+        });
+    } else {
+        // Store message in state
+        chatState.messages_secondary.push({
+            role: 'user',
+            text: userMessage,
+            originalLang: chatState.secondaryLang,
+            timestamp: new Date()
+        });
+    }
     
     // Clear input
     messageInput.value = '';
@@ -240,13 +270,20 @@ async function handleSubmit(e) {
         // Add assistant response
         addMessageToUI(response.assistant_text, 'assistant');
         
-        chatState.messages.push({
-            role: 'assistant',
-            text: response.assistant_text,
-            originalLang: response.assistant_lang,
-            timestamp: new Date()
-        });
-        
+        if (chatState.displayLang === chatState.primaryLang) {
+
+            chatState.messages_primary.push({
+                role: 'assistant',
+                text: response.assistant_text,
+                timestamp: new Date()
+            });
+        } else {
+            chatState.messages_secondary.push({
+                role: 'assistant',
+                text: response.assistant_text,
+                timestamp: new Date()
+            });
+        }
     } catch (error) {
         removeTypingIndicator();
         
@@ -263,16 +300,52 @@ async function handleSubmit(e) {
 
 // Translate messages to display language
 async function translateMessages() {
+    // Here displayLang is already toggled
     console.log('translateMessages called');
-    if (chatState.messages.length === 0) return;
+    console.log('current display language:', chatState.displayLang);
+    if (chatState.displayLang === chatState.primaryLang && chatState.messages_secondary.length === 0) {
+        return;
+    }
+    if (chatState.displayLang === chatState.secondaryLang && chatState.messages_primary.length === 0) {
+        return;
+    }
     
     // Show loading indicator
     messagesContainer.style.opacity = '0.6';
     messagesContainer.style.pointerEvents = 'none';
-    
+
+    if (chatState.messages_primary.length === chatState.messages_secondary.length || 
+        ( chatState.displayLang === chatState.primaryLang && 
+            chatState.messages_primary.length > chatState.messages_secondary.length ) ||
+        ( chatState.displayLang === chatState.secondaryLang && 
+            chatState.messages_secondary.length > chatState.messages_primary.length )    
+    ) {
+        // No need to translate if message counts are equal or there are already more messages in displayLang, just re-render
+        rerenderMessages();
+        messagesContainer.style.opacity = '1';
+        messagesContainer.style.pointerEvents = 'auto';
+        return;
+    }
     try {
+        let msgToTranslate = [];
+        let source_lang = '';
+        let target_lang = '';
+        if (chatState.displayLang === chatState.primaryLang) {
+            // Translate from secondary to primary
+            const idx = chatState.messages_primary.length;
+            msgToTranslate = chatState.messages_secondary.slice(idx);
+            source_lang = chatState.secondaryLang;
+            target_lang = chatState.primaryLang;
+        }
+        else {
+            // Translate from primary to secondary
+            const idx = chatState.messages_secondary.length;
+            msgToTranslate = chatState.messages_primary.slice(idx);
+            source_lang = chatState.primaryLang;
+            target_lang = chatState.secondaryLang;
+        }
         // Collect all message texts
-        const textsToTranslate = chatState.messages.map(msg => msg.text);
+        const textsToTranslate = msgToTranslate.map(msg => msg.text);
         
         // Call translation API
         const response = await fetch('/api/translate', {
@@ -282,8 +355,8 @@ async function translateMessages() {
             },
             body: JSON.stringify({
                 text: textsToTranslate,
-                source_lang: chatState.messages[0].originalLang || chatState.primaryLang,
-                target_lang: chatState.displayLang
+                source_lang: source_lang,
+                target_lang: target_lang
             })
         });
         
@@ -293,19 +366,35 @@ async function translateMessages() {
         
         const data = await response.json();
         const translatedTexts = data.translated_text;
+
+        // Check if all messages were translated
+        if (translatedTexts.length !== msgToTranslate.length) {
+            throw new Error('Translation API returned mismatched number of messages');
+        }
         
         // Update messages with translated text
-        chatState.messages.forEach((msg, index) => {
-            msg.displayText = translatedTexts[index];
-        });
+        for (let i = 0; i < translatedTexts.length; i++) {
+            if (chatState.displayLang === chatState.primaryLang) {
+                chatState.messages_primary.push({
+                    role: msgToTranslate[i].role,
+                    text: translatedTexts[i],
+                    timestamp: msgToTranslate[i].timestamp
+                });
+            }
+            else {
+                chatState.messages_secondary.push({
+                    role: msgToTranslate[i].role,
+                    text: translatedTexts[i],
+                    timestamp: msgToTranslate[i].timestamp
+                });
+            }
+        }
         
         // Re-render all messages
         rerenderMessages();
-        
     } catch (error) {
         console.error('Translation error:', error);
-        // If translation fails, just show original messages
-        rerenderMessages();
+        // ADD SOME ERROR HANDLING HERE
     } finally {
         // Remove loading state
         messagesContainer.style.opacity = '1';
@@ -316,8 +405,13 @@ async function translateMessages() {
 // Re-render all messages in the UI
 function rerenderMessages() {
     console.log('rerenderMessages called');
+    let hasMessages = false;
     // Clear message container but keep welcome message logic
-    const hasMessages = chatState.messages.length > 0;
+    if (chatState.displayLang === chatState.primaryLang) {
+        hasMessages = chatState.messages_primary.length > 0;
+    } else {
+        hasMessages = chatState.messages_secondary.length > 0;
+    }
     messagesContainer.innerHTML = '';
     
     if (!hasMessages) {
@@ -338,12 +432,23 @@ function rerenderMessages() {
     }
     
     // Render each message
-    chatState.messages.forEach(msg => {
-        const text = msg.displayText || msg.text;
-        const timestamp = msg.timestamp ? new Date(msg.timestamp) : new Date();
-        const messageBubble = createMessageBubble(text, msg.role, timestamp);
-        messagesContainer.appendChild(messageBubble);
-    });
+    if (chatState.displayLang === chatState.primaryLang) {
+
+        chatState.messages_primary.forEach(msg => {
+            const text = msg.text;
+            const timestamp = msg.timestamp ? new Date(msg.timestamp) : new Date();
+            const messageBubble = createMessageBubble(text, msg.role, timestamp);
+            messagesContainer.appendChild(messageBubble);
+        });
+    } else {
+
+        chatState.messages_secondary.forEach(msg => {
+            const text = msg.text;
+            const timestamp = msg.timestamp ? new Date(msg.timestamp) : new Date();
+            const messageBubble = createMessageBubble(text, msg.role, timestamp);
+            messagesContainer.appendChild(messageBubble);
+        });
+    }
     
     // Maintain scroll position (scroll to bottom)
     messagesContainer.scrollTop = messagesContainer.scrollHeight;
@@ -643,6 +748,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 // LocalStorage Functions (Milestone D3 & F2)
 function saveConversationToStorage() {
+    console.log('saveConversationToStorage called');
     if (!chatState.conversationId) return;
     
     const conversationData = {
