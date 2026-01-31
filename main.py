@@ -125,8 +125,12 @@ async def chat(request: ChatRequest):
 
     # Generate LLM response
     try:
+        if len(request.messages) > 20:
+            messages_to_use = request.messages[-20:]
+        else:
+            messages_to_use = request.messages
         assistant_text = await llm.generate_reply(
-            messages=request.messages,
+            messages=messages_to_use,
             target_lang=request.language,
             mode=request.mode
         )

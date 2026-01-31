@@ -47,6 +47,7 @@ const messageInput = document.getElementById('messageInput');
 const sendButton = document.getElementById('sendButton');
 const statusIndicator = document.getElementById('statusIndicator');
 const homeButton = document.getElementById('homeButton');
+const resetButton = document.getElementById('resetButton');
 const languageToggle = document.getElementById('languageToggle');
 const languageCheckbox = document.getElementById('languageCheckbox');
 const currentLangSpan = document.getElementById('currentLang');
@@ -658,8 +659,52 @@ function handleHomeButton() {
     window.location.href = '/';
 }
 
+// Handle reset button
+function handleResetButton() {
+    // Clear all messages
+    chatState.messages_primary = [];
+    chatState.messages_secondary = [];
+    chatState.messages_tutor = [];
+    
+    // Reset conversation ID so a new one will be created
+    chatState.conversationId = null;
+    
+    // Clear the messages container and show welcome message
+    messagesContainer.innerHTML = `
+        <div class="welcome-message">
+            <p>👋 Welcome! I'm your language tutor. Start chatting to practice your language skills.</p>
+        </div>
+    `;
+    
+    // Clear tutor messages if tutor pane is open
+    tutorMessagesContainer.innerHTML = `
+        <div class="welcome-message">
+            <p>👋 Hi! I'm your AI tutor. Ask me anything about the conversation or language learning!</p>
+        </div>
+    `;
+    
+    // Clear message input
+    messageInput.value = '';
+    
+    // Update URL to remove conversation ID
+    updateUrl({
+        topic: chatState.topicId,
+        mode: chatState.mode,
+        primary: chatState.primaryLang,
+        secondary: chatState.secondaryLang,
+        display: chatState.displayLang
+    });
+    
+    // Clear localStorage for this conversation
+    localStorage.removeItem(`conversation_${chatState.conversationId}`);
+    
+    // Focus input
+    messageInput.focus();
+}
+
 // Auto-send topic message if topic was selected
 async function handleTopicMessage(topicId) {
+    console.log('handleTopicMessage called with topicId:', topicId);
     if (!topicId) return;
     
     // Map topic IDs to starter messages
@@ -731,6 +776,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Set up event listeners
     chatForm.addEventListener('submit', handleSubmit);
     homeButton.addEventListener('click', handleHomeButton);
+    resetButton.addEventListener('click', handleResetButton);
     languageCheckbox.addEventListener('change', handleLanguageToggle);
     
     // Tutor pane event listeners
@@ -747,7 +793,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     
     // Auto-send topic message if present (only if no messages loaded)
-    if (params.topic && chatState.messages.length === 0) {
+    if (params.topic && chatState.messages_primary.length === 0 && chatState.messages_secondary.length === 0) {
         handleTopicMessage(params.topic);
     }
 });
