@@ -5,12 +5,14 @@ const chatState = {
     messages_primary: [],
     messages_secondary: [],
     messages_tutor: [],
+    messages: [],
     conversationId: null,
     primaryLang: 'es', // I'm learning Language
     secondaryLang: 'en', // I speak Language
     displayLang: 'en',
     mode: 'chat', // 'chat' or 'tutor'
-    topicId: null
+    starterId: null,
+    starterSeeded: false
 };
 
 // Get URL parameters
@@ -18,7 +20,7 @@ function getUrlParams() {
     const params = new URLSearchParams(window.location.search);
     return {
         conversationId: params.get('c'),
-        topic: params.get('topic'),
+        starter: params.get('starter'),
         mode: params.get('mode') || 'chat',
         primary: params.get('primary') || 'es',
         secondary: params.get('secondary') || 'en',
@@ -30,7 +32,7 @@ function getUrlParams() {
 function updateUrl(params) {
     const url = new URLSearchParams();
     if (params.conversationId) url.set('c', params.conversationId);
-    if (params.topic) url.set('topic', params.topic);
+    if (params.starter) url.set('starter', params.starter);
     if (params.mode && params.mode !== 'chat') url.set('mode', params.mode);
     if (params.primary) url.set('primary', params.primary);
     if (params.secondary) url.set('secondary', params.secondary);
@@ -210,7 +212,7 @@ async function sendMessageToAPI(userText) {
             chatState.conversationId = data.conversation_id;
             updateUrl({
                 conversationId: data.conversation_id,
-                topic: chatState.topicId,
+                starter: chatState.starterId,
                 mode: chatState.mode,
                 primary: chatState.primaryLang,
                 secondary: chatState.secondaryLang,
@@ -475,7 +477,7 @@ async function handleLanguageToggle() {
     updateLanguageToggleDisplay();
     updateUrl({
         conversationId: chatState.conversationId,
-        topic: chatState.topicId,
+        starter: chatState.starterId,
         mode: chatState.mode,
         primary: chatState.primaryLang,
         secondary: chatState.secondaryLang,
@@ -643,7 +645,7 @@ function handleTutorMode() {
     updateModeDisplay();
     updateUrl({
         conversationId: chatState.conversationId,
-        topic: null, // Clear topic in tutor mode
+        starter: null, // Clear starter in tutor mode
         mode: chatState.mode,
         primary: chatState.primaryLang,
         secondary: chatState.secondaryLang,
@@ -667,6 +669,7 @@ function handleResetButton() {
     chatState.messages_tutor = [];
     
     // Reset conversation ID so a new one will be created
+    const previousConversationId = chatState.conversationId;
     chatState.conversationId = null;
     
     // Clear the messages container and show welcome message
@@ -688,7 +691,8 @@ function handleResetButton() {
     
     // Update URL to remove conversation ID
     updateUrl({
-        topic: chatState.topicId,
+        conversationId: chatState.conversationId,
+        starter: chatState.starterId,
         mode: chatState.mode,
         primary: chatState.primaryLang,
         secondary: chatState.secondaryLang,
@@ -696,40 +700,47 @@ function handleResetButton() {
     });
     
     // Clear localStorage for this conversation
-    localStorage.removeItem(`conversation_${chatState.conversationId}`);
+    if (previousConversationId) {
+        localStorage.removeItem(`conversation_${previousConversationId}`);
+    }
     
     // Focus input
     messageInput.focus();
+    chatState.starterSeeded = false;
+    if (chatState.starterId) {
+        seedAssistantFromStarter(chatState.starterId);
+    }
 }
 
-// Auto-send topic message if topic was selected
-async function handleTopicMessage(topicId) {
-    console.log('handleTopicMessage called with topicId:', topicId);
-    if (!topicId) return;
-    
+async function seedAssistantFromStarter(starterId) {
+    if (!starterId || chatState.starterSeeded) return;
+    if (chatState.messages_primary.length > 0 || chatState.messages_secondary.length > 0) {
+        chatState.starterSeeded = true;
+        return;
+    }
     try {
-        // Fetch topics from API to get the starter message
-        const response = await fetch('/api/topics');
+        const response = await fetch(`/api/conversation_starters/${starterId}`);
         if (!response.ok) {
-            throw new Error('Failed to fetch topics');
+            throw new Error('Failed to load conversation starter');
         }
-        
-        const topics = await response.json();
-        const topic = topics.find(t => t.id === topicId);
-        const message = topic?.starter_message || `Let's talk about ${topicId}.`;
-        
-        // Wait a moment for UI to settle
-        setTimeout(() => {
-            messageInput.value = message;
-            chatForm.dispatchEvent(new Event('submit'));
-        }, 500);
+        const data = await response.json();
+        addMessageToUI(data.assistant_opening, 'assistant');
+        chatState.messages_primary.push({
+            role: 'assistant',
+            text: data.assistant_opening,
+            originalLang: chatState.primaryLang,
+            timestamp: new Date()
+        });
+        chatState.messages.push({
+            role: 'assistant',
+            text: data.assistant_opening,
+            originalLang: chatState.primaryLang,
+            timestamp: new Date()
+        });
+        chatState.starterSeeded = true;
     } catch (error) {
-        console.error('Error fetching topic message:', error);
-        // Fallback to generic message
-        setTimeout(() => {
-            messageInput.value = `Let's talk about ${topicId}.`;
-            chatForm.dispatchEvent(new Event('submit'));
-        }, 500);
+        console.error('Unable to seed starter message:', error);
+        chatState.starterSeeded = true;
     }
 }
 
@@ -757,12 +768,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     // Initialize state from URL
     chatState.conversationId = params.conversationId;
-    chatState.topicId = params.topic;
+    chatState.starterId = params.starter;
     chatState.mode = params.mode;
     chatState.primaryLang = params.primary;
     chatState.secondaryLang = params.secondary;
-    chatState.displayLang = params.secondary;
-    //chatState.displayLang = params.display || params.primary;
+    chatState.displayLang = params.display || params.primary;
     
     // Update UI based on state
     updateLanguageToggleDisplay();
@@ -801,10 +811,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         await loadConversationFromDatabase(params.conversationId);
     }
     
-    // Auto-send topic message if present (only if no messages loaded)
-    if (params.topic && chatState.messages_primary.length === 0 && chatState.messages_secondary.length === 0) {
-        handleTopicMessage(params.topic);
-    }
+    // Seed starter if provided
+    await seedAssistantFromStarter(chatState.starterId);
 });
 
 // LocalStorage Functions (Milestone D3 & F2)
@@ -818,7 +826,7 @@ function saveConversationToStorage() {
         secondaryLang: chatState.secondaryLang,
         displayLang: chatState.displayLang,
         mode: chatState.mode,
-        topicId: chatState.topicId,
+        starterId: chatState.starterId,
         messages: chatState.messages,
         lastUpdated: new Date().toISOString()
     };

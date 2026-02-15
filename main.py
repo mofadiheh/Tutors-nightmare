@@ -3,18 +3,89 @@ Language-Learning Chatbot - Main Application
 FastAPI backend with static file serving
 """
 
-from fastapi import FastAPI, Query, HTTPException
+from fastapi import FastAPI, Query, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
-from typing import Optional, List, Union
+from typing import Optional, List, Union, Dict
+from datetime import datetime, timedelta
+import os
 import uvicorn
 import uuid
 import asyncio
 import db
 import llm
+import topics
 
 app = FastAPI(title="Language-Learning Chatbot")
+
+STARTER_COOLDOWN_MINUTES = int(os.getenv("CONVERSATION_STARTER_REFRESH_COOLDOWN_MINUTES", "5"))
+STARTER_COUNT = int(os.getenv("CONVERSATION_STARTER_COUNT", "6"))
+STARTER_PREVIEW_LENGTH = int(os.getenv("CONVERSATION_STARTER_PREVIEW_LENGTH", "80"))
+STARTER_SUBREDDITS = [
+    sub.strip()
+    for sub in os.getenv(
+        "CONVERSATION_STARTER_SUBREDDITS", "AskReddit,worldnews,technology,todayilearned,UpliftingNews"
+    ).split(",")
+    if sub.strip()
+]
+STARTER_SUBREDDIT_LIMIT = int(os.getenv("CONVERSATION_STARTER_SUB_LIMIT", "10"))
+
+
+def _get_client_ip(request: Request) -> str:
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    if request.client and request.client.host:
+        return request.client.host
+    return "unknown"
+
+
+def _build_preview(text: str) -> str:
+    stripped = text.strip()
+    if len(stripped) <= STARTER_PREVIEW_LENGTH:
+        return stripped
+    return stripped[: STARTER_PREVIEW_LENGTH - 1].rstrip() + "…"
+
+
+def _fallback_starters_from_posts(posts: List[Dict], desired_count: int) -> List[Dict]:
+    """Generate simple conversation starters without LLM (best-effort)."""
+    if not posts:
+        return []
+    starters = []
+    seen_titles = set()
+    sorted_posts = sorted(posts, key=lambda p: p.get("score", 0), reverse=True)
+    for rank, post in enumerate(sorted_posts):
+        if len(starters) >= desired_count:
+            break
+        title = (post.get("title") or "").strip()
+        if not title:
+            continue
+        normalized_title = title.lower()
+        if normalized_title in seen_titles:
+            continue
+        seen_titles.add(normalized_title)
+        subreddit = post.get("subreddit") or "reddit"
+        summary = (post.get("selftext") or "").strip()
+        summary_snippet = summary[:160].replace("\n", " ")
+        if summary_snippet:
+            opener_body = summary_snippet
+        else:
+            opener_body = f"It's trending on r/{subreddit} right now."
+        assistant_opening = (
+            f"I just read on r/{subreddit} about \"{title}\". {opener_body} "
+            "What do you think about it?"
+        )
+        starters.append(
+            {
+                "title": title[:60],
+                "assistant_opening": assistant_opening.strip(),
+                "subreddit": subreddit,
+                "source_url": post.get("url"),
+                "metadata": {"fallback": True, "reddit_id": post.get("id")},
+            }
+        )
+    return starters
 
 # Database initialization on startup
 @app.on_event("startup")
@@ -63,59 +134,151 @@ class ConversationResponse(BaseModel):
     mode: str
     messages: List[Message]
 
+
+class ConversationStarterSummary(BaseModel):
+    """Conversation starter summary for landing page."""
+    id: str
+    title: str
+    preview: str
+
+
+class ConversationStarterListResponse(BaseModel):
+    generated_at: Optional[str]
+    starters: List[ConversationStarterSummary]
+
+
+class ConversationStarterDetailResponse(BaseModel):
+    id: str
+    title: str
+    assistant_opening: str
+    source_url: Optional[str]
+    subreddit: Optional[str]
+
+
+class RefreshResponse(BaseModel):
+    count: int
+    generated_at: str
+
 # Health check endpoint
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
     return {"ok": True}
 
-# Topics endpoint (stubbed for now - Milestone B2)
-@app.get("/api/topics")
-async def get_topics(lang: Optional[str] = Query(default="en")):
-    """
-    Get topic starters for conversation
-    Currently returns stubbed data - will be replaced with real topics in Phase 2
-    """
-    # Stubbed topics - same for all languages for now
-    topics = [
-        {
-            "id": "ABCD",
-            "title": "ABCD",
-            "description": "Discuss travel experiences and dream destinations",
-            "icon": "✈️",
-            "starter_message": "I'd like to talk SSADASDSA about travel and experiences."
-        },
-        {
-            "id": "food",
-            "title": "Food",
-            "description": "Talk about cuisine, recipes, and dining experiences",
-            "icon": "🍕",
-            "starter_message": "I'd like to discuss food and cuisine."
-        },
-        {
-            "id": "hobbies",
-            "title": "Hobbies",
-            "description": "Share your interests and leisure activities",
-            "icon": "🎨",
-            "starter_message": "I'd like to talk about hobbies and interests."
-        },
-        {
-            "id": "work",
-            "title": "Work",
-            "description": "Discuss career, workplace, and professional life",
-            "icon": "💼",
-            "starter_message": "I'd like to discuss work and careers."
-        },
-        {
-            "id": "culture",
-            "title": "Culture",
-            "description": "Explore traditions, arts, and cultural differences",
-            "icon": "🎭",
-            "starter_message": "I'd like to explore culture and traditions."
-        }
+@app.post("/api/conversation_starters/refresh", response_model=RefreshResponse)
+async def refresh_conversation_starters(request: Request):
+    """Public endpoint to trigger conversation starter refresh with cooldown."""
+    ip_address = _get_client_ip(request)
+    now = datetime.utcnow()
+    last_refresh = await db.get_last_refresh_time(ip_address)
+    cooldown_delta = timedelta(minutes=STARTER_COOLDOWN_MINUTES)
+
+    if last_refresh and now - last_refresh < cooldown_delta:
+        remaining = cooldown_delta - (now - last_refresh)
+        raise HTTPException(
+            status_code=429,
+            detail={
+                "message": "Please wait before refreshing again.",
+                "retry_after_seconds": int(remaining.total_seconds()),
+            },
+        )
+
+    try:
+        reddit_posts = await topics.fetch_multiple_subreddits(
+            STARTER_SUBREDDITS or ["AskReddit"],
+            limit_per_subreddit=STARTER_SUBREDDIT_LIMIT,
+            time_filter="day",
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Failed to fetch Reddit posts: {exc}")
+
+    if not reddit_posts:
+        raise HTTPException(status_code=502, detail="No Reddit posts available for starters.")
+
+    fallback_used = False
+    try:
+        starters_from_llm = await llm.generate_conversation_starters_from_posts(
+            reddit_posts, desired_count=STARTER_COUNT
+        )
+    except Exception as exc:
+        print(f"LLM starter generation failed, switching to fallback. Reason: {exc}")
+        starters_from_llm = _fallback_starters_from_posts(reddit_posts, STARTER_COUNT)
+        fallback_used = True
+        if not starters_from_llm:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to generate conversation starters and no fallback available: {exc}",
+            )
+
+    generated_at = now.isoformat()
+    starters_payload = []
+    for idx, starter in enumerate(starters_from_llm):
+        starters_payload.append(
+            {
+                "id": str(uuid.uuid4()),
+                "title": starter["title"],
+                "opener": starter["assistant_opening"],
+                "source_url": starter.get("source_url"),
+                "subreddit": starter.get("subreddit"),
+                "rank": idx,
+                "metadata": starter.get("metadata", {}),
+                "generated_by": "fallback_stub" if fallback_used else "reddit_llm",
+                "created_at": generated_at,
+            }
+        )
+
+    inserted = await db.replace_conversation_starters(starters_payload)
+    await db.update_refresh_time(ip_address)
+
+    return RefreshResponse(count=inserted, generated_at=generated_at)
+
+
+@app.get("/api/conversation_starters", response_model=ConversationStarterListResponse)
+async def list_conversation_starters():
+    starters, latest_time = await db.get_conversation_starters()
+    summaries = [
+        ConversationStarterSummary(
+            id=item["id"],
+            title=item["title"],
+            preview=_build_preview(item["opener"]),
+        )
+        for item in starters
     ]
-    
-    return topics
+    return ConversationStarterListResponse(generated_at=latest_time, starters=summaries)
+
+
+@app.get("/api/conversation_starters/{starter_id}", response_model=ConversationStarterDetailResponse)
+async def get_conversation_starter(starter_id: str):
+    starter = await db.get_conversation_starter_by_id(starter_id)
+    if not starter:
+        raise HTTPException(status_code=404, detail="Conversation starter not found.")
+    return ConversationStarterDetailResponse(
+        id=starter["id"],
+        title=starter["title"],
+        assistant_opening=starter["opener"],
+        source_url=starter["source_url"],
+        subreddit=starter["subreddit"],
+    )
+
+
+@app.get("/api/topics")
+async def legacy_topics():
+    """Legacy endpoint kept for backward compatibility."""
+    starters, _ = await db.get_conversation_starters()
+    if not starters:
+        return []
+    topics_payload = []
+    for starter in starters:
+        topics_payload.append(
+            {
+                "id": starter["id"],
+                "title": starter["title"],
+                "description": starter["opener"],
+                "icon": "💬",
+                "starter_message": starter["opener"],
+            }
+        )
+    return topics_payload
 
 # Chat endpoint (with LLM integration - Milestone I2)
 @app.post("/api/chat", response_model=ChatResponse)

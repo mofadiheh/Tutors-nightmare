@@ -69,7 +69,15 @@
 
         <!-- Topic Starters Section -->
         <section class="topics-section">
-            <h2>Choose a Topic to Start</h2>
+            <h2>Choose a Conversation Starter</h2>
+            <div class="topics-controls">
+                <p id="startersTimestamp" class="topics-timestamp">Loading conversation starters...</p>
+                <button id="refreshStartersBtn" class="refresh-button">
+                    <span class="button-icon">🔄</span>
+                    Refresh Starters
+                </button>
+            </div>
+            <p id="startersStatus" class="topics-status" role="status"></p>
             <div id="topicsContainer" class="topics-container">
                 <div class="loading-topics">
                     <div class="spinner"></div>

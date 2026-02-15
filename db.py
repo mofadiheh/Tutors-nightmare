@@ -5,14 +5,19 @@ SQLite database with async support (aiosqlite)
 
 import aiosqlite
 import os
+import json
 from datetime import datetime
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Tuple
 
 # Database file path
 DB_PATH = "tutors_nightmare.db"
 
 # Schema version for migrations
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
+
+# Conversation starter defaults
+CONVERSATION_STARTER_TABLE = "conversation_starters"
+REFRESH_LOG_TABLE = "conversation_starter_refresh_log"
 
 
 async def get_db():
@@ -68,7 +73,29 @@ async def init_db():
                 PRIMARY KEY (text, translated_text)
             )
         """)
-        
+        # Conversation starters table
+        await db.execute(f"""
+            CREATE TABLE IF NOT EXISTS {CONVERSATION_STARTER_TABLE} (
+                id TEXT PRIMARY KEY,
+                title TEXT NOT NULL,
+                opener TEXT NOT NULL,
+                source_url TEXT,
+                subreddit TEXT,
+                rank INTEGER NOT NULL DEFAULT 0,
+                metadata TEXT,
+                generated_by TEXT NOT NULL DEFAULT 'reddit_llm',
+                created_at TEXT NOT NULL
+            )
+        """)
+
+        # Refresh log table for per-IP cooldown tracking
+        await db.execute(f"""
+            CREATE TABLE IF NOT EXISTS {REFRESH_LOG_TABLE} (
+                ip_address TEXT PRIMARY KEY,
+                last_refresh_at TEXT NOT NULL
+            )
+        """)
+
         # Create schema_version table for migrations
         await db.execute("""
             CREATE TABLE IF NOT EXISTS schema_version (
@@ -90,7 +117,14 @@ async def init_db():
             print(f"✅ Database initialized with schema version {SCHEMA_VERSION}")
         else:
             current_version = row[0]
-            print(f"✅ Database ready (schema version {current_version})")
+            if current_version < SCHEMA_VERSION:
+                await db.execute(
+                    "INSERT INTO schema_version (version, applied_at) VALUES (?, ?)",
+                    (SCHEMA_VERSION, datetime.utcnow().isoformat())
+                )
+                print(f"✅ Database migrated to schema version {SCHEMA_VERSION}")
+            else:
+                print(f"✅ Database ready (schema version {current_version})")
         
         await db.commit()
         
@@ -250,5 +284,133 @@ async def conversation_exists(conversation_id: str) -> bool:
         )
         row = await cursor.fetchone()
         return row is not None
+    finally:
+        await db.close()
+
+
+async def replace_conversation_starters(starters: List[Dict]) -> int:
+    """Replace all conversation starters with the provided list."""
+    db = await get_db()
+    try:
+        await db.execute("BEGIN")
+        await db.execute(f"DELETE FROM {CONVERSATION_STARTER_TABLE}")
+        for starter in starters:
+            await db.execute(
+                f"""
+                INSERT INTO {CONVERSATION_STARTER_TABLE}
+                    (id, title, opener, source_url, subreddit, rank, metadata, generated_by, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    starter["id"],
+                    starter["title"],
+                    starter["opener"],
+                    starter.get("source_url"),
+                    starter.get("subreddit"),
+                    starter.get("rank", 0),
+                    json.dumps(starter.get("metadata", {})),
+                    starter.get("generated_by", "reddit_llm"),
+                    starter.get("created_at", datetime.utcnow().isoformat()),
+                ),
+            )
+        await db.commit()
+        return len(starters)
+    finally:
+        await db.close()
+
+
+async def get_conversation_starters() -> Tuple[List[Dict], Optional[str]]:
+    """Return all conversation starters sorted by rank asc, created_at desc."""
+    db = await get_db()
+    try:
+        cursor = await db.execute(
+            f"""
+            SELECT id, title, opener, source_url, subreddit, rank, metadata, created_at
+            FROM {CONVERSATION_STARTER_TABLE}
+            ORDER BY rank ASC, created_at DESC
+            """
+        )
+        rows = await cursor.fetchall()
+        starters = []
+        latest_time = None
+        for row in rows:
+            starters.append(
+                {
+                    "id": row["id"],
+                    "title": row["title"],
+                    "opener": row["opener"],
+                    "source_url": row["source_url"],
+                    "subreddit": row["subreddit"],
+                    "rank": row["rank"],
+                    "metadata": json.loads(row["metadata"]) if row["metadata"] else {},
+                    "created_at": row["created_at"],
+                }
+            )
+            if latest_time is None or row["created_at"] > latest_time:
+                latest_time = row["created_at"]
+        return starters, latest_time
+    finally:
+        await db.close()
+
+
+async def get_conversation_starter_by_id(starter_id: str) -> Optional[Dict]:
+    """Fetch a single conversation starter by ID."""
+    db = await get_db()
+    try:
+        cursor = await db.execute(
+            f"""
+            SELECT id, title, opener, source_url, subreddit, rank, metadata, created_at
+            FROM {CONVERSATION_STARTER_TABLE}
+            WHERE id = ?
+            LIMIT 1
+            """,
+            (starter_id,),
+        )
+        row = await cursor.fetchone()
+        if not row:
+            return None
+        return {
+            "id": row["id"],
+            "title": row["title"],
+            "opener": row["opener"],
+            "source_url": row["source_url"],
+            "subreddit": row["subreddit"],
+            "rank": row["rank"],
+            "metadata": json.loads(row["metadata"]) if row["metadata"] else {},
+            "created_at": row["created_at"],
+        }
+    finally:
+        await db.close()
+
+
+async def get_last_refresh_time(ip_address: str) -> Optional[datetime]:
+    """Get last refresh timestamp for an IP."""
+    db = await get_db()
+    try:
+        cursor = await db.execute(
+            f"SELECT last_refresh_at FROM {REFRESH_LOG_TABLE} WHERE ip_address = ?",
+            (ip_address,),
+        )
+        row = await cursor.fetchone()
+        if row:
+            return datetime.fromisoformat(row["last_refresh_at"])
+        return None
+    finally:
+        await db.close()
+
+
+async def update_refresh_time(ip_address: str) -> None:
+    """Upsert refresh timestamp for an IP."""
+    db = await get_db()
+    try:
+        await db.execute(
+            f"""
+            INSERT INTO {REFRESH_LOG_TABLE} (ip_address, last_refresh_at)
+            VALUES (?, ?)
+            ON CONFLICT(ip_address) DO UPDATE SET last_refresh_at = excluded.last_refresh_at
+            """,
+            (ip_address, datetime.utcnow().isoformat()),
+        )
+        await db.commit()
     finally:
         await db.close()
