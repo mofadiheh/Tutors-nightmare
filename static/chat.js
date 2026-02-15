@@ -8,7 +8,7 @@ const chatState = {
     conversationId: null,
     primaryLang: 'es', // I'm learning Language
     secondaryLang: 'en', // I speak Language
-    displayLang: 'es',
+    displayLang: 'en',
     mode: 'chat', // 'chat' or 'tutor'
     topicId: null
 };
@@ -194,7 +194,8 @@ async function sendMessageToAPI(userText) {
                 conversation_id: chatState.conversationId,
                 messages: messagesPayload,
                 language: chatState.displayLang,
-                mode: chatState.mode
+                mode: chatState.mode,
+                is_primary_lang: chatState.displayLang === chatState.primaryLang
             })
         });
         
@@ -578,11 +579,10 @@ async function handleTutorSubmit(e) {
             },
             body: JSON.stringify({
                 conversation_id: chatState.conversationId,
-                user_text: tutorMessage,
-                primary_lang: chatState.primaryLang,
-                secondary_lang: chatState.secondaryLang,
-                display_lang: chatState.displayLang,
-                mode: 'tutor'
+                messages: [{role: 'user', text: tutorMessage}],
+                language: chatState.primaryLang,
+                mode: 'tutor',
+                is_primary_lang: true
             })
         });
         
@@ -707,22 +707,30 @@ async function handleTopicMessage(topicId) {
     console.log('handleTopicMessage called with topicId:', topicId);
     if (!topicId) return;
     
-    // Map topic IDs to starter messages
-    const topicMessages = {
-        travel: "I'd like to talk about travel and experiences.",
-        food: "I'd like to discuss food and cuisine.",
-        hobbies: "I'd like to talk about hobbies and interests.",
-        work: "I'd like to discuss work and careers.",
-        culture: "I'd like to explore culture and traditions."
-    };
-    
-    const message = topicMessages[topicId] || `Let's talk about ${topicId}.`;
-    
-    // Wait a moment for UI to settle
-    setTimeout(() => {
-        messageInput.value = message;
-        chatForm.dispatchEvent(new Event('submit'));
-    }, 500);
+    try {
+        // Fetch topics from API to get the starter message
+        const response = await fetch('/api/topics');
+        if (!response.ok) {
+            throw new Error('Failed to fetch topics');
+        }
+        
+        const topics = await response.json();
+        const topic = topics.find(t => t.id === topicId);
+        const message = topic?.starter_message || `Let's talk about ${topicId}.`;
+        
+        // Wait a moment for UI to settle
+        setTimeout(() => {
+            messageInput.value = message;
+            chatForm.dispatchEvent(new Event('submit'));
+        }, 500);
+    } catch (error) {
+        console.error('Error fetching topic message:', error);
+        // Fallback to generic message
+        setTimeout(() => {
+            messageInput.value = `Let's talk about ${topicId}.`;
+            chatForm.dispatchEvent(new Event('submit'));
+        }, 500);
+    }
 }
 
 // Check health endpoint on page load
@@ -753,7 +761,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     chatState.mode = params.mode;
     chatState.primaryLang = params.primary;
     chatState.secondaryLang = params.secondary;
-    chatState.displayLang = params.display || params.primary;
+    chatState.displayLang = params.secondary;
+    //chatState.displayLang = params.display || params.primary;
     
     // Update UI based on state
     updateLanguageToggleDisplay();

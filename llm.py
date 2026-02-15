@@ -40,6 +40,7 @@ async def generate_reply(
     messages: List[Dict],
     target_lang: str,
     mode: str = "chat",
+    is_primary_lang: bool = True,
     system_prompt: Optional[str] = None
 ) -> str:
     """
@@ -49,6 +50,7 @@ async def generate_reply(
         messages: List of message dicts with 'role' and 'text' keys
         target_lang: Target language code (e.g., 'en', 'de', 'fr', 'es')
         mode: 'chat' or 'tutor'
+        is_primary_lang: Whether the language is primary (learning) or secondary (native)
         system_prompt: Custom system prompt (optional)
 
     Returns:
@@ -64,21 +66,33 @@ async def generate_reply(
             lang_prompts = SYSTEM_PROMPTS[lang_code]
             if mode == "tutor" and "tutor" in lang_prompts:
                 system_prompt = lang_prompts["tutor"]
-            elif "chat" in lang_prompts:
-                system_prompt = lang_prompts["chat"]
+            elif mode == "chat":
+                # Select chat_primary or chat_secondary based on is_primary_lang
+                if is_primary_lang and "chat_primary" in lang_prompts:
+                    system_prompt = lang_prompts["chat_primary"]
+                elif not is_primary_lang and "chat_secondary" in lang_prompts:
+                    system_prompt = lang_prompts["chat_secondary"]
+                elif "chat" in lang_prompts:
+                    # Fallback to old "chat" key if specific ones don't exist
+                    system_prompt = lang_prompts["chat"]
         
         # Fallback to English if language not found
         if system_prompt is None:
             if mode == "tutor" and "en" in SYSTEM_PROMPTS and "tutor" in SYSTEM_PROMPTS["en"]:
                 system_prompt = SYSTEM_PROMPTS["en"]["tutor"]
-            else:
-                system_prompt = SYSTEM_PROMPTS.get("en", {}).get("chat", "You are a helpful language tutor.")
+            elif mode == "chat":
+                if is_primary_lang and "en" in SYSTEM_PROMPTS and "chat_primary" in SYSTEM_PROMPTS["en"]:
+                    system_prompt = SYSTEM_PROMPTS["en"]["chat_primary"]
+                elif not is_primary_lang and "en" in SYSTEM_PROMPTS and "chat_secondary" in SYSTEM_PROMPTS["en"]:
+                    system_prompt = SYSTEM_PROMPTS["en"]["chat_secondary"]
+                else:
+                    system_prompt = SYSTEM_PROMPTS.get("en", {}).get("chat", "You are a helpful language tutor.")
 
     # Prepare messages for OpenRouter API
     api_messages = [
         {"role": "system", "content": system_prompt}
     ]
-
+    print(f"Using system prompt for {target_lang} ({mode}, primary={is_primary_lang}):\n{system_prompt}\n")
     # Add conversation history (limit to last 20 messages to avoid token limits)
     recent_messages = messages[-20:] if len(messages) > 20 else messages
 

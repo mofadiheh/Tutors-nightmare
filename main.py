@@ -29,6 +29,7 @@ class ChatRequest(BaseModel):
     messages: List[dict]  # List of message dicts with 'role', 'text'
     language: str  # Language of the conversation
     mode: str = "chat"  # "chat" or "tutor"
+    is_primary_lang: bool = True  # Whether the conversation language is primary (learning) or secondary (native)
 
 class ChatResponse(BaseModel):
     """Chat message response"""
@@ -78,34 +79,39 @@ async def get_topics(lang: Optional[str] = Query(default="en")):
     # Stubbed topics - same for all languages for now
     topics = [
         {
-            "id": "travel",
-            "title": "Travel",
+            "id": "ABCD",
+            "title": "ABCD",
             "description": "Discuss travel experiences and dream destinations",
-            "icon": "✈️"
+            "icon": "✈️",
+            "starter_message": "I'd like to talk SSADASDSA about travel and experiences."
         },
         {
             "id": "food",
             "title": "Food",
             "description": "Talk about cuisine, recipes, and dining experiences",
-            "icon": "🍕"
+            "icon": "🍕",
+            "starter_message": "I'd like to discuss food and cuisine."
         },
         {
             "id": "hobbies",
             "title": "Hobbies",
             "description": "Share your interests and leisure activities",
-            "icon": "🎨"
+            "icon": "🎨",
+            "starter_message": "I'd like to talk about hobbies and interests."
         },
         {
             "id": "work",
             "title": "Work",
             "description": "Discuss career, workplace, and professional life",
-            "icon": "💼"
+            "icon": "💼",
+            "starter_message": "I'd like to discuss work and careers."
         },
         {
             "id": "culture",
             "title": "Culture",
             "description": "Explore traditions, arts, and cultural differences",
-            "icon": "🎭"
+            "icon": "🎭",
+            "starter_message": "I'd like to explore culture and traditions."
         }
     ]
     
@@ -132,7 +138,8 @@ async def chat(request: ChatRequest):
         assistant_text = await llm.generate_reply(
             messages=messages_to_use,
             target_lang=request.language,
-            mode=request.mode
+            mode=request.mode,
+            is_primary_lang=request.is_primary_lang
         )
 
         # Ensure we got a valid response
