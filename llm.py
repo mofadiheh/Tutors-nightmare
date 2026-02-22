@@ -1,6 +1,6 @@
 """
 LLM integration module for Language-Learning Chatbot
-Uses OpenRouter API with Xiaomi MIMO v2 Flash model
+Uses OpenRouter API
 """
 
 import os
@@ -14,9 +14,9 @@ from datetime import datetime
 # OpenRouter API configuration
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
-#MODEL_NAME = "xiaomi/mimo-v2-flash:free"
-#MODEL_NAME = "nvidia/nemotron-3-nano-30b-a3b:free"
-MODEL_NAME = "openai/gpt-oss-120b:free"
+# Free-models router (https://openrouter.ai/docs/guides/routing/routers/free-models-router)
+# Override with OPENROUTER_MODEL if needed.
+MODEL_NAME = os.getenv("OPENROUTER_MODEL", "openrouter/free")
 
 # Load system prompts from YAML file
 def _load_prompts() -> Dict[str, Dict]:
@@ -272,3 +272,116 @@ def get_model_info() -> Dict:
         "api_key_set": bool(OPENROUTER_API_KEY),
         "base_url": OPENROUTER_BASE_URL
     }
+
+
+async def generate_conversation_starters_from_posts(
+    posts: List[Dict],
+    desired_count: int = 6,
+    target_lang: str = "en"
+) -> List[Dict]:
+    """Use the LLM to craft conversation starters from Reddit posts."""
+    if not OPENROUTER_API_KEY:
+        raise ValueError("OPENROUTER_API_KEY environment variable not set")
+    if not posts:
+        raise ValueError("No Reddit posts available to generate starters.")
+
+    limited_posts = posts[:20]
+    post_lines = []
+    for idx, post in enumerate(limited_posts, start=1):
+        title = post.get("title", "Untitled")
+        subreddit = post.get("subreddit", "unknown")
+        summary = (post.get("selftext") or "")[:280].replace("\n", " ").strip()
+        post_lines.append(
+            f"{idx}. [r/{subreddit}] {title} (score {post.get('score', 0)}) "
+            f"Summary: {summary or 'No description provided.'}"
+        )
+
+    posts_block = "\n".join(post_lines)
+    system_prompt = (
+        "You craft engaging conversation starters for a language learning chatbot. "
+        "Each starter should help a user begin a conversation in a friendly, curious tone. "
+        "Return only valid JSON."
+    )
+    user_prompt = (
+        f"Create up to {desired_count} unique conversation starters in {target_lang.upper()} "
+        "based on the Reddit trends below. Each starter object must include:\n"
+        '  - "title": short catchy title under 60 characters\n'
+        '  - "assistant_opening": 2-3 sentences the AI assistant will say to begin the chat\n'
+        '  - "subreddit": subreddit name (e.g., technology)\n'
+        '  - "source_url": optional reddit link if helpful\n'
+        "Keep tone positive and inclusive. Use general phrasing that works for broad audiences.\n\n"
+        f"Reddit posts:\n{posts_block}\n\n"
+        "Respond with a JSON array only."
+    )
+
+    payload = {
+        "model": MODEL_NAME,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+        "temperature": 0.7,
+        "max_tokens": 700,
+        "top_p": 0.9,
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=40.0) as client:
+            response = await client.post(
+                f"{OPENROUTER_BASE_URL}/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                    "Content-Type": "application/json",
+                    "HTTP-Referer": "https://github.com/mofadiheh/tutors-nightmare",
+                    "X-Title": "Language Learning Chatbot",
+                },
+                json=payload,
+            )
+            if response.status_code != 200:
+                raise Exception(
+                    f"Conversation starter generation failed: {response.status_code} {response.text}"
+                )
+            data = response.json()
+            content = data["choices"][0]["message"]["content"]
+    except httpx.TimeoutException:
+        raise Exception("Conversation starter request timed out")
+    except httpx.RequestError as exc:
+        raise Exception(f"Conversation starter network error: {exc}")
+
+    json_payload = _extract_json_array(content)
+    starters_raw = json.loads(json_payload)
+    if not isinstance(starters_raw, list):
+        raise ValueError("Unexpected starter payload format")
+
+    sanitized = []
+    for entry in starters_raw:
+        title = (entry.get("title") or "").strip()
+        opening = (entry.get("assistant_opening") or "").strip()
+        if not title or not opening:
+            continue
+        sanitized.append(
+            {
+                "title": title,
+                "assistant_opening": opening,
+                "subreddit": entry.get("subreddit"),
+                "source_url": entry.get("source_url"),
+                "metadata": {
+                    "raw_source": entry.get("source_reference"),
+                },
+            }
+        )
+        if len(sanitized) >= desired_count:
+            break
+
+    if not sanitized:
+        raise ValueError("LLM returned no usable conversation starters.")
+    return sanitized
+
+
+def _extract_json_array(text: str) -> str:
+    """Extract the first JSON array from a text blob."""
+    start = text.find("[")
+    end = text.rfind("]")
+    if start == -1 or end == -1 or end <= start:
+        raise ValueError("No JSON array detected in model response.")
+    return text[start : end + 1]

@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Language Tutor - Beta Access</title>
+    <link rel="stylesheet" href="/static/auth.css?v=2">
+</head>
+<body>
+    <main class="auth-shell">
+        <section class="auth-card">
+            <header class="auth-header">
+                <h1>Language Tutor</h1>
+                <p>Beta access for invited testers</p>
+            </header>
+
+            <div class="auth-tabs" role="tablist" aria-label="Authentication options">
+                <button id="loginTab" class="auth-tab active" type="button" role="tab" aria-selected="true">Log In</button>
+                <button id="registerTab" class="auth-tab" type="button" role="tab" aria-selected="false">Register</button>
+            </div>
+
+            <p id="authStatus" class="auth-status" role="status"></p>
+
+            <form id="loginForm" class="auth-form active" autocomplete="on">
+                <label for="loginUsername">Username</label>
+                <input id="loginUsername" name="username" type="text" required minlength="3" maxlength="24" />
+
+                <label for="loginPassword">Password</label>
+                <input id="loginPassword" name="password" type="password" required minlength="10" />
+
+                <button type="submit" class="primary-btn">Log In</button>
+            </form>
+
+            <form id="registerForm" class="auth-form" autocomplete="on">
+                <label for="registerDisplayName">Display Name</label>
+                <input id="registerDisplayName" name="display_name" type="text" required maxlength="64" />
+
+                <label for="registerUsername">Username</label>
+                <input id="registerUsername" name="username" type="text" required minlength="3" maxlength="24" />
+
+                <label for="registerPassword">Password</label>
+                <input id="registerPassword" name="password" type="password" required minlength="10" />
+
+                <label for="inviteCode">Beta Invite Code</label>
+                <input id="inviteCode" name="invite_code" type="password" required />
+
+                <button type="submit" class="primary-btn">Create Account</button>
+            </form>
+        </section>
+    </main>
+
+    <script src="/static/auth.js?v=2"></script>
+</body>
+</html>

@@ -1,6 +1,8 @@
 // Landing page functionality
 
-// Get URL parameters
+let currentUser = null;
+let startersCache = [];
+
 function getUrlParams() {
     const params = new URLSearchParams(window.location.search);
     return {
@@ -9,7 +11,16 @@ function getUrlParams() {
     };
 }
 
-// Save language preferences to localStorage
+function getNextPath() {
+    const query = window.location.search || '';
+    return `${window.location.pathname}${query}`;
+}
+
+function redirectToAuth() {
+    const next = encodeURIComponent(getNextPath());
+    window.location.href = `/auth?next=${next}`;
+}
+
 function saveLanguagePreferences(primary, secondary) {
     localStorage.setItem('languagePrefs', JSON.stringify({
         primary,
@@ -18,165 +29,265 @@ function saveLanguagePreferences(primary, secondary) {
     }));
 }
 
-// Load language preferences from localStorage
 function loadLanguagePreferences() {
     const saved = localStorage.getItem('languagePrefs');
-    if (saved) {
-        try {
-            return JSON.parse(saved);
-        } catch (e) {
-            return null;
-        }
+    if (!saved) {
+        return null;
     }
-    return null;
+
+    try {
+        return JSON.parse(saved);
+    } catch (_error) {
+        return null;
+    }
 }
 
-// Fetch topics from API
-async function loadTopics(lang = 'en') {
-    const topicsContainer = document.getElementById('topicsContainer');
-    
+async function fetchCurrentUser() {
+    const response = await fetch('/api/me');
+    if (response.status === 401) {
+        redirectToAuth();
+        return null;
+    }
+    if (!response.ok) {
+        throw new Error('Failed to fetch profile');
+    }
+    currentUser = await response.json();
+    return currentUser;
+}
+
+async function persistProfilePreferences(primary, secondary) {
     try {
-        const response = await fetch(`/api/topics?lang=${lang}`);
-        
-        if (!response.ok) {
-            throw new Error('Failed to load topics');
-        }
-        
-        const topics = await response.json();
-        renderTopics(topics);
-        
+        await fetch('/api/me', {
+            method: 'PATCH',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                preferred_primary_lang: primary,
+                preferred_secondary_lang: secondary
+            })
+        });
     } catch (error) {
-        console.error('Error loading topics:', error);
+        console.warn('Failed to persist profile preferences:', error);
+    }
+}
+
+async function loadConversationStarters() {
+    const topicsContainer = document.getElementById('topicsContainer');
+    const timestampEl = document.getElementById('startersTimestamp');
+    const statusEl = document.getElementById('startersStatus');
+    statusEl.textContent = '';
+    statusEl.style.color = '#e53e3e';
+
+    topicsContainer.innerHTML = `
+        <div class="loading-topics">
+            <div class="spinner"></div>
+            <p>Loading conversation starters...</p>
+        </div>
+    `;
+
+    try {
+        const response = await fetch('/api/conversation_starters');
+        if (response.status === 401) {
+            redirectToAuth();
+            return;
+        }
+        if (!response.ok) {
+            throw new Error('Failed to load conversation starters');
+        }
+        const data = await response.json();
+        startersCache = data.starters || [];
+        renderConversationStarters(startersCache);
+        timestampEl.textContent = data.generated_at
+            ? `Updated ${new Date(data.generated_at).toLocaleString()}`
+            : 'Not generated yet';
+    } catch (error) {
+        console.error('Error loading conversation starters:', error);
         topicsContainer.innerHTML = `
             <div class="error-message">
-                <p><strong>Oops!</strong> Failed to load topics.</p>
-                <button onclick="loadTopics('${lang}')">Try Again</button>
+                <p><strong>Oops!</strong> Failed to load conversation starters.</p>
+                <button id="retryLoadStarters">Try Again</button>
             </div>
         `;
+        timestampEl.textContent = 'Unable to load starters.';
+        const retryBtn = document.getElementById('retryLoadStarters');
+        if (retryBtn) {
+            retryBtn.addEventListener('click', loadConversationStarters);
+        }
+        statusEl.textContent = 'Please try refreshing again.';
     }
 }
 
-// Render topics to the page
-function renderTopics(topics) {
+function renderConversationStarters(starters) {
     const topicsContainer = document.getElementById('topicsContainer');
-    
-    if (!topics || topics.length === 0) {
+
+    if (!starters || starters.length === 0) {
         topicsContainer.innerHTML = `
             <div class="error-message">
-                <p>No topics available at the moment.</p>
+                <p>No conversation starters available right now.</p>
             </div>
         `;
         return;
     }
-    
-    topicsContainer.innerHTML = topics.map(topic => `
-        <div class="topic-card" data-topic-id="${topic.id}">
-            <span class="topic-icon">${topic.icon || '💬'}</span>
-            <div class="topic-title">${topic.title}</div>
-            <div class="topic-description">${topic.description}</div>
+
+    topicsContainer.innerHTML = starters.map((starter) => `
+        <div class="topic-card" data-starter-id="${starter.id}">
+            <span class="topic-icon">💬</span>
+            <div class="topic-title">${starter.title}</div>
+            <div class="topic-description">${starter.preview}</div>
         </div>
     `).join('');
-    
-    // Add click handlers to topic cards
-    document.querySelectorAll('.topic-card').forEach(card => {
+
+    document.querySelectorAll('.topic-card').forEach((card) => {
         card.addEventListener('click', () => {
-            const topicId = card.dataset.topicId;
-            startChat(topicId);
+            const starterId = card.dataset.starterId;
+            startChat(starterId);
         });
     });
 }
 
-// Validate language selection
+async function refreshConversationStarters() {
+    const button = document.getElementById('refreshStartersBtn');
+    const statusEl = document.getElementById('startersStatus');
+    button.disabled = true;
+    statusEl.textContent = 'Refreshing conversation starters...';
+
+    try {
+        const response = await fetch('/api/conversation_starters/refresh', {
+            method: 'POST'
+        });
+        if (response.status === 401) {
+            redirectToAuth();
+            return;
+        }
+        if (response.status === 429) {
+            const data = await response.json();
+            const seconds = data.detail?.retry_after_seconds ?? 0;
+            const minutes = Math.ceil(seconds / 60);
+            statusEl.textContent = `Please wait about ${minutes} minute(s) before refreshing again.`;
+            statusEl.style.color = '#e53e3e';
+            return;
+        }
+        if (!response.ok) {
+            throw new Error('Failed to refresh conversation starters');
+        }
+        statusEl.style.color = '#38a169';
+        statusEl.textContent = 'New conversation starters ready!';
+        await loadConversationStarters();
+    } catch (error) {
+        console.error('Refresh error:', error);
+        statusEl.style.color = '#e53e3e';
+        statusEl.textContent = 'Refresh failed. Please try again shortly.';
+    } finally {
+        button.disabled = false;
+    }
+}
+
 function validateLanguages() {
     const primary = document.getElementById('primaryLanguage').value;
     const secondary = document.getElementById('secondaryLanguage').value;
-    
+
     if (!primary) {
         alert('Please select the language you are learning.');
         document.getElementById('primaryLanguage').focus();
         return false;
     }
-    
+
     if (!secondary) {
         alert('Please select the language you speak.');
         document.getElementById('secondaryLanguage').focus();
         return false;
     }
-    
+
     if (primary === secondary) {
         alert('Please select different languages for learning and speaking.');
         return false;
     }
-    
+
     return true;
 }
 
-// Start chat with topic
-function startChat(topicId = null) {
+async function startChat(starterId = null) {
     if (!validateLanguages()) {
         return;
     }
-    
+
     const primary = document.getElementById('primaryLanguage').value;
     const secondary = document.getElementById('secondaryLanguage').value;
-    
-    // Save preferences
+
     saveLanguagePreferences(primary, secondary);
-    
-    // Build chat URL
+    await persistProfilePreferences(primary, secondary);
+
     const params = new URLSearchParams({
         primary,
-        secondary
+        secondary,
+        display: secondary
     });
-    
-    if (topicId) {
-        params.set('topic', topicId);
+
+    if (starterId) {
+        params.set('starter', starterId);
     }
-    
-    // Navigate to chat page
+
     window.location.href = `/chat?${params.toString()}`;
 }
 
-// Initialize page
-document.addEventListener('DOMContentLoaded', () => {
-    // Load saved preferences
+async function handleLogout() {
+    try {
+        await fetch('/api/auth/logout', { method: 'POST' });
+    } finally {
+        window.location.href = '/auth';
+    }
+}
+
+function applyInitialLanguageDefaults(user) {
     const saved = loadLanguagePreferences();
     const urlParams = getUrlParams();
-    
-    // Set dropdowns to saved or URL values
-    if (urlParams.primary) {
-        document.getElementById('primaryLanguage').value = urlParams.primary;
-    } else if (saved && saved.primary) {
-        document.getElementById('primaryLanguage').value = saved.primary;
+
+    const primary = urlParams.primary || (saved && saved.primary) || user.preferred_primary_lang || '';
+    const secondary = urlParams.secondary || (saved && saved.secondary) || user.preferred_secondary_lang || 'en';
+
+    document.getElementById('primaryLanguage').value = primary;
+    document.getElementById('secondaryLanguage').value = secondary;
+}
+
+// Initialize page
+document.addEventListener('DOMContentLoaded', async () => {
+    const user = await fetchCurrentUser();
+    if (!user) {
+        return;
     }
-    
-    if (urlParams.secondary) {
-        document.getElementById('secondaryLanguage').value = urlParams.secondary;
-    } else if (saved && saved.secondary) {
-        document.getElementById('secondaryLanguage').value = saved.secondary;
-    }
-    
-    // Load topics
-    const primaryLang = document.getElementById('primaryLanguage').value || 'en';
-    loadTopics(primaryLang);
-    
-    // Update topics when primary language changes
-    document.getElementById('primaryLanguage').addEventListener('change', (e) => {
-        const lang = e.target.value || 'en';
-        loadTopics(lang);
-    });
-    
-    // Free discussion button
-    document.getElementById('freeDiscussionBtn').addEventListener('click', () => {
-        startChat(null);
-    });
-    
-    // Allow Enter key to start chat
-    document.querySelectorAll('.language-dropdown').forEach(dropdown => {
-        dropdown.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
+
+    try {
+        applyInitialLanguageDefaults(user);
+        await loadConversationStarters();
+
+        const freeDiscussionBtn = document.getElementById('freeDiscussionBtn');
+        if (freeDiscussionBtn) {
+            freeDiscussionBtn.addEventListener('click', () => {
                 startChat(null);
-            }
+            });
+        }
+
+        const refreshBtn = document.getElementById('refreshStartersBtn');
+        if (refreshBtn) {
+            refreshBtn.addEventListener('click', () => {
+                refreshConversationStarters();
+            });
+        }
+
+        const logoutBtn = document.getElementById('logoutBtn');
+        if (logoutBtn) {
+            logoutBtn.addEventListener('click', handleLogout);
+        }
+
+        document.querySelectorAll('.language-dropdown').forEach((dropdown) => {
+            dropdown.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    startChat(null);
+                }
+            });
         });
-    });
+    } catch (error) {
+        console.error('Failed to initialize landing page:', error);
+    }
 });

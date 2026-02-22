@@ -4,15 +4,18 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Language Tutor - Start Learning</title>
-    <link rel="stylesheet" href="/static/landing.css">
+    <link rel="stylesheet" href="/static/landing.css?v=2">
 </head>
 <body>
     <div class="landing-container">
         <!-- Header -->
         <header class="landing-header">
-            <div class="logo">
-                <span class="logo-icon">🌍</span>
-                <h1>Language Tutor</h1>
+            <div class="landing-header-top">
+                <div class="logo">
+                    <span class="logo-icon">🌍</span>
+                    <h1>Language Tutor</h1>
+                </div>
+                <button id="logoutBtn" class="secondary-button" type="button">Log Out</button>
             </div>
             <p class="tagline">Your AI-powered language learning companion</p>
         </header>
@@ -69,7 +72,15 @@
 
         <!-- Topic Starters Section -->
         <section class="topics-section">
-            <h2>Choose a Topic to Start</h2>
+            <h2>Choose a Conversation Starter</h2>
+            <div class="topics-controls">
+                <p id="startersTimestamp" class="topics-timestamp">Loading conversation starters...</p>
+                <button id="refreshStartersBtn" class="refresh-button">
+                    <span class="button-icon">🔄</span>
+                    Refresh Starters
+                </button>
+            </div>
+            <p id="startersStatus" class="topics-status" role="status"></p>
             <div id="topicsContainer" class="topics-container">
                 <div class="loading-topics">
                     <div class="spinner"></div>
@@ -93,6 +104,6 @@
         </footer>
     </div>
 
-    <script src="/static/landing.js"></script>
+    <script src="/static/landing.js?v=2"></script>
 </body>
 </html>
