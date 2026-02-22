@@ -178,7 +178,8 @@ function startChat(starterId = null) {
     // Build chat URL
     const params = new URLSearchParams({
         primary,
-        secondary
+        secondary,
+        display: secondary
     });
     
     if (starterId) {

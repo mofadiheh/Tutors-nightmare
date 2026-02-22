@@ -1,6 +1,6 @@
 """
 LLM integration module for Language-Learning Chatbot
-Uses OpenRouter API with Xiaomi MIMO v2 Flash model
+Uses OpenRouter API
 """
 
 import os
@@ -14,9 +14,9 @@ from datetime import datetime
 # OpenRouter API configuration
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
-#MODEL_NAME = "xiaomi/mimo-v2-flash:free"
-#MODEL_NAME = "nvidia/nemotron-3-nano-30b-a3b:free"
-MODEL_NAME = "openai/gpt-oss-120b:free"
+# Free-models router (https://openrouter.ai/docs/guides/routing/routers/free-models-router)
+# Override with OPENROUTER_MODEL if needed.
+MODEL_NAME = os.getenv("OPENROUTER_MODEL", "openrouter/free")
 
 # Load system prompts from YAML file
 def _load_prompts() -> Dict[str, Dict]:

@@ -772,7 +772,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     chatState.mode = params.mode;
     chatState.primaryLang = params.primary;
     chatState.secondaryLang = params.secondary;
-    chatState.displayLang = params.display || params.primary;
+    chatState.displayLang = params.display || params.secondary;
     
     // Update UI based on state
     updateLanguageToggleDisplay();
