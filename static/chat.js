@@ -15,6 +15,8 @@ const chatState = {
     starterSeeded: false
 };
 
+let currentUser = null;
+
 // Get URL parameters
 function getUrlParams() {
     const params = new URLSearchParams(window.location.search);
@@ -22,10 +24,41 @@ function getUrlParams() {
         conversationId: params.get('c'),
         starter: params.get('starter'),
         mode: params.get('mode') || 'chat',
-        primary: params.get('primary') || 'es',
-        secondary: params.get('secondary') || 'en',
+        primary: params.get('primary'),
+        secondary: params.get('secondary'),
         display: params.get('display')
     };
+}
+
+function getNextPath() {
+    const query = window.location.search || '';
+    return `${window.location.pathname}${query}`;
+}
+
+function redirectToAuth() {
+    const next = encodeURIComponent(getNextPath());
+    window.location.href = `/auth?next=${next}`;
+}
+
+async function fetchCurrentUser() {
+    const response = await fetch('/api/me');
+    if (response.status === 401) {
+        redirectToAuth();
+        return null;
+    }
+    if (!response.ok) {
+        throw new Error('Failed to load profile');
+    }
+    currentUser = await response.json();
+    return currentUser;
+}
+
+async function handleLogout() {
+    try {
+        await fetch('/api/auth/logout', { method: 'POST' });
+    } finally {
+        window.location.href = '/auth';
+    }
 }
 
 // Update URL without reloading page
@@ -50,6 +83,7 @@ const sendButton = document.getElementById('sendButton');
 const statusIndicator = document.getElementById('statusIndicator');
 const homeButton = document.getElementById('homeButton');
 const resetButton = document.getElementById('resetButton');
+const logoutButton = document.getElementById('logoutBtn');
 const languageToggle = document.getElementById('languageToggle');
 const languageCheckbox = document.getElementById('languageCheckbox');
 const currentLangSpan = document.getElementById('currentLang');
@@ -197,9 +231,16 @@ async function sendMessageToAPI(userText) {
                 messages: messagesPayload,
                 language: chatState.displayLang,
                 mode: chatState.mode,
-                is_primary_lang: chatState.displayLang === chatState.primaryLang
+                is_primary_lang: chatState.displayLang === chatState.primaryLang,
+                primary_lang: chatState.primaryLang,
+                secondary_lang: chatState.secondaryLang
             })
         });
+
+        if (response.status === 401) {
+            redirectToAuth();
+            throw new Error('Unauthorized');
+        }
         
         if (!response.ok) {
             throw new Error('Failed to send message');
@@ -369,6 +410,11 @@ async function translateMessages() {
                 target_lang: target_lang
             })
         });
+
+        if (response.status === 401) {
+            redirectToAuth();
+            throw new Error('Unauthorized');
+        }
         
         if (!response.ok) {
             throw new Error('Translation failed');
@@ -584,9 +630,16 @@ async function handleTutorSubmit(e) {
                 messages: [{role: 'user', text: tutorMessage}],
                 language: chatState.primaryLang,
                 mode: 'tutor',
-                is_primary_lang: true
+                is_primary_lang: true,
+                primary_lang: chatState.primaryLang,
+                secondary_lang: chatState.secondaryLang
             })
         });
+
+        if (response.status === 401) {
+            redirectToAuth();
+            throw new Error('Unauthorized');
+        }
         
         if (!response.ok) {
             throw new Error('Failed to send message');
@@ -720,6 +773,10 @@ async function seedAssistantFromStarter(starterId) {
     }
     try {
         const response = await fetch(`/api/conversation_starters/${starterId}`);
+        if (response.status === 401) {
+            redirectToAuth();
+            return;
+        }
         if (!response.ok) {
             throw new Error('Failed to load conversation starter');
         }
@@ -763,6 +820,11 @@ async function checkHealth() {
 
 // Initialize app
 document.addEventListener('DOMContentLoaded', async () => {
+    const user = await fetchCurrentUser();
+    if (!user) {
+        return;
+    }
+
     // Get URL parameters
     const params = getUrlParams();
     
@@ -770,9 +832,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     chatState.conversationId = params.conversationId;
     chatState.starterId = params.starter;
     chatState.mode = params.mode;
-    chatState.primaryLang = params.primary;
-    chatState.secondaryLang = params.secondary;
-    chatState.displayLang = params.display || params.secondary;
+    chatState.primaryLang = params.primary || user.preferred_primary_lang || 'es';
+    chatState.secondaryLang = params.secondary || user.preferred_secondary_lang || 'en';
+    chatState.displayLang = params.display || chatState.secondaryLang;
     
     // Update UI based on state
     updateLanguageToggleDisplay();
@@ -796,6 +858,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     chatForm.addEventListener('submit', handleSubmit);
     homeButton.addEventListener('click', handleHomeButton);
     resetButton.addEventListener('click', handleResetButton);
+    logoutButton.addEventListener('click', handleLogout);
     languageCheckbox.addEventListener('change', handleLanguageToggle);
     
     // Tutor pane event listeners
@@ -847,6 +910,10 @@ function saveConversationToStorage() {
 async function loadConversationFromDatabase(conversationId) {
     try {
         const response = await fetch(`/api/conversations/${conversationId}`);
+        if (response.status === 401) {
+            redirectToAuth();
+            return false;
+        }
         
         if (!response.ok) {
             if (response.status === 404) {

@@ -38,14 +38,20 @@ body {
 
 /* Header */
 .landing-header {
-    text-align: center;
     margin-bottom: 40px;
+}
+
+.landing-header-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
 }
 
 .logo {
     display: flex;
     align-items: center;
-    justify-content: center;
+    justify-content: flex-start;
     gap: 15px;
     margin-bottom: 10px;
 }
@@ -67,6 +73,23 @@ body {
     font-size: 1.2em;
     color: #718096;
     margin-top: 10px;
+    text-align: left;
+}
+
+.secondary-button {
+    background: #ffffff;
+    border: 2px solid #cbd5e0;
+    color: #2d3748;
+    padding: 10px 16px;
+    border-radius: 999px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.secondary-button:hover {
+    border-color: #94a3b8;
+    background: #f8fafc;
 }
 
 /* Language Selection Section */
@@ -371,6 +394,16 @@ body {
 
     .tagline {
         font-size: 1em;
+        text-align: center;
+    }
+
+    .landing-header-top {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .secondary-button {
+        align-self: flex-end;
     }
 
     .language-selectors {

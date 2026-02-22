@@ -1,6 +1,8 @@
 // Landing page functionality
 
-// Get URL parameters
+let currentUser = null;
+let startersCache = [];
+
 function getUrlParams() {
     const params = new URLSearchParams(window.location.search);
     return {
@@ -9,7 +11,16 @@ function getUrlParams() {
     };
 }
 
-// Save language preferences to localStorage
+function getNextPath() {
+    const query = window.location.search || '';
+    return `${window.location.pathname}${query}`;
+}
+
+function redirectToAuth() {
+    const next = encodeURIComponent(getNextPath());
+    window.location.href = `/auth?next=${next}`;
+}
+
 function saveLanguagePreferences(primary, secondary) {
     localStorage.setItem('languagePrefs', JSON.stringify({
         primary,
@@ -18,23 +29,49 @@ function saveLanguagePreferences(primary, secondary) {
     }));
 }
 
-// Load language preferences from localStorage
 function loadLanguagePreferences() {
     const saved = localStorage.getItem('languagePrefs');
-    if (saved) {
-        try {
-            return JSON.parse(saved);
-        } catch (e) {
-            return null;
-        }
+    if (!saved) {
+        return null;
     }
-    return null;
+
+    try {
+        return JSON.parse(saved);
+    } catch (_error) {
+        return null;
+    }
 }
 
-// Conversation starters state
-let startersCache = [];
+async function fetchCurrentUser() {
+    const response = await fetch('/api/me');
+    if (response.status === 401) {
+        redirectToAuth();
+        return null;
+    }
+    if (!response.ok) {
+        throw new Error('Failed to fetch profile');
+    }
+    currentUser = await response.json();
+    return currentUser;
+}
 
-// Fetch conversation starters
+async function persistProfilePreferences(primary, secondary) {
+    try {
+        await fetch('/api/me', {
+            method: 'PATCH',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                preferred_primary_lang: primary,
+                preferred_secondary_lang: secondary
+            })
+        });
+    } catch (error) {
+        console.warn('Failed to persist profile preferences:', error);
+    }
+}
+
 async function loadConversationStarters() {
     const topicsContainer = document.getElementById('topicsContainer');
     const timestampEl = document.getElementById('startersTimestamp');
@@ -51,6 +88,10 @@ async function loadConversationStarters() {
 
     try {
         const response = await fetch('/api/conversation_starters');
+        if (response.status === 401) {
+            redirectToAuth();
+            return;
+        }
         if (!response.ok) {
             throw new Error('Failed to load conversation starters');
         }
@@ -79,7 +120,7 @@ async function loadConversationStarters() {
 
 function renderConversationStarters(starters) {
     const topicsContainer = document.getElementById('topicsContainer');
-    
+
     if (!starters || starters.length === 0) {
         topicsContainer.innerHTML = `
             <div class="error-message">
@@ -88,16 +129,16 @@ function renderConversationStarters(starters) {
         `;
         return;
     }
-    
-    topicsContainer.innerHTML = starters.map(starter => `
+
+    topicsContainer.innerHTML = starters.map((starter) => `
         <div class="topic-card" data-starter-id="${starter.id}">
             <span class="topic-icon">💬</span>
             <div class="topic-title">${starter.title}</div>
             <div class="topic-description">${starter.preview}</div>
         </div>
     `).join('');
-    
-    document.querySelectorAll('.topic-card').forEach(card => {
+
+    document.querySelectorAll('.topic-card').forEach((card) => {
         card.addEventListener('click', () => {
             const starterId = card.dataset.starterId;
             startChat(starterId);
@@ -110,11 +151,15 @@ async function refreshConversationStarters() {
     const statusEl = document.getElementById('startersStatus');
     button.disabled = true;
     statusEl.textContent = 'Refreshing conversation starters...';
-    
+
     try {
         const response = await fetch('/api/conversation_starters/refresh', {
             method: 'POST'
         });
+        if (response.status === 401) {
+            redirectToAuth();
+            return;
+        }
         if (response.status === 429) {
             const data = await response.json();
             const seconds = data.detail?.retry_after_seconds ?? 0;
@@ -138,95 +183,111 @@ async function refreshConversationStarters() {
     }
 }
 
-// Validate language selection
 function validateLanguages() {
     const primary = document.getElementById('primaryLanguage').value;
     const secondary = document.getElementById('secondaryLanguage').value;
-    
+
     if (!primary) {
         alert('Please select the language you are learning.');
         document.getElementById('primaryLanguage').focus();
         return false;
     }
-    
+
     if (!secondary) {
         alert('Please select the language you speak.');
         document.getElementById('secondaryLanguage').focus();
         return false;
     }
-    
+
     if (primary === secondary) {
         alert('Please select different languages for learning and speaking.');
         return false;
     }
-    
+
     return true;
 }
 
-// Start chat with selected starter
-function startChat(starterId = null) {
+async function startChat(starterId = null) {
     if (!validateLanguages()) {
         return;
     }
-    
+
     const primary = document.getElementById('primaryLanguage').value;
     const secondary = document.getElementById('secondaryLanguage').value;
-    
-    // Save preferences
+
     saveLanguagePreferences(primary, secondary);
-    
-    // Build chat URL
+    await persistProfilePreferences(primary, secondary);
+
     const params = new URLSearchParams({
         primary,
         secondary,
         display: secondary
     });
-    
+
     if (starterId) {
         params.set('starter', starterId);
     }
-    
-    // Navigate to chat page
+
     window.location.href = `/chat?${params.toString()}`;
 }
 
-// Initialize page
-document.addEventListener('DOMContentLoaded', () => {
-    // Load saved preferences
+async function handleLogout() {
+    try {
+        await fetch('/api/auth/logout', { method: 'POST' });
+    } finally {
+        window.location.href = '/auth';
+    }
+}
+
+function applyInitialLanguageDefaults(user) {
     const saved = loadLanguagePreferences();
     const urlParams = getUrlParams();
-    
-    // Set dropdowns to saved or URL values
-    if (urlParams.primary) {
-        document.getElementById('primaryLanguage').value = urlParams.primary;
-    } else if (saved && saved.primary) {
-        document.getElementById('primaryLanguage').value = saved.primary;
+
+    const primary = urlParams.primary || (saved && saved.primary) || user.preferred_primary_lang || '';
+    const secondary = urlParams.secondary || (saved && saved.secondary) || user.preferred_secondary_lang || 'en';
+
+    document.getElementById('primaryLanguage').value = primary;
+    document.getElementById('secondaryLanguage').value = secondary;
+}
+
+// Initialize page
+document.addEventListener('DOMContentLoaded', async () => {
+    const user = await fetchCurrentUser();
+    if (!user) {
+        return;
     }
-    
-    if (urlParams.secondary) {
-        document.getElementById('secondaryLanguage').value = urlParams.secondary;
-    } else if (saved && saved.secondary) {
-        document.getElementById('secondaryLanguage').value = saved.secondary;
-    }
-    
-    // Load conversation starters
-    loadConversationStarters();
-    
-    // Free discussion button
-    document.getElementById('freeDiscussionBtn').addEventListener('click', () => {
-        startChat(null);
-    });
-    
-    document.getElementById('refreshStartersBtn').addEventListener('click', () => {
-        refreshConversationStarters();
-    });
-    
-    // Allow Enter key to start chat
-    document.querySelectorAll('.language-dropdown').forEach(dropdown => {
-        dropdown.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
+
+    try {
+        applyInitialLanguageDefaults(user);
+        await loadConversationStarters();
+
+        const freeDiscussionBtn = document.getElementById('freeDiscussionBtn');
+        if (freeDiscussionBtn) {
+            freeDiscussionBtn.addEventListener('click', () => {
                 startChat(null);
-            }
+            });
+        }
+
+        const refreshBtn = document.getElementById('refreshStartersBtn');
+        if (refreshBtn) {
+            refreshBtn.addEventListener('click', () => {
+                refreshConversationStarters();
+            });
+        }
+
+        const logoutBtn = document.getElementById('logoutBtn');
+        if (logoutBtn) {
+            logoutBtn.addEventListener('click', handleLogout);
+        }
+
+        document.querySelectorAll('.language-dropdown').forEach((dropdown) => {
+            dropdown.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    startChat(null);
+                }
+            });
         });
-    });
+    } catch (error) {
+        console.error('Failed to initialize landing page:', error);
+    }
 });
